@@ -7,6 +7,7 @@ The rules of Gur as pure TypeScript with no dependencies. The game server uses i
 | `src/tiles.ts` | 106 tiles, joker from the indicator (13 → 1), printed joker, tile values                                      |
 | `src/melds.ts` | Sets, runs, the 12-13-1 option                                                                                |
 | `src/hand.ts`  | Closing hands (melds, seven pairs, mosaic), unconnected tiles, restart check                                  |
+| `src/bot.ts`   | Simple bots: best arrangement, when to take a discard, what to discard, when to close                         |
 | `src/game.ts`  | Dealing, restart, draw and discard, closing, doubles, the middle running out, scoring, rounds, the timer move |
 
 Every action takes a game and returns a new one. An illegal move throws `RuleError`. Seats are numbered counter-clockwise.

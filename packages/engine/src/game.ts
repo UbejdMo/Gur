@@ -166,7 +166,8 @@ function applyDeal(game: Game, roundNumber: number, starter: number, deal: Deal)
   validateDeal(deal, game.players.length);
   const middle = [...deal.middle];
   game.players.forEach((p, i) => {
-    p.groups = deal.hands[i]!.map((t) => [t]);
+    // Dealt tiles start as one row on the rack, in the order dealt; the player builds groups from it.
+    p.groups = [[...deal.hands[i]!]];
   });
   const restartOffers = deal.hands.flatMap((h, i) => (identicalPairCount(h) >= 3 ? [i] : []));
   // The first player draws at once, holding 15 tiles.

@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { describeTile, isRealJoker } from '@gur/engine';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { tileId } from '@gur/engine';
 import { Tile } from '@/components/Tile';
-import { dealPractice } from '@/practice';
 import { colors } from '@/theme';
 
+const DECOR = [tileId('red', 7), tileId('yellow', 8), tileId('blue', 9), 104];
+
 export default function Home() {
-  const [deal, setDeal] = useState(() => dealPractice());
-  const { round } = deal.game;
-  const jokerName = `${round.joker.color} ${round.joker.number}`;
+  const [aceHigh, setAceHigh] = useState(true);
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -17,75 +17,59 @@ export default function Home() {
       </Text>
       <Text style={styles.subtitle}>Tile rummy, the Kosovo way</Text>
 
-      <View style={styles.middle}>
-        <View style={styles.middleItem}>
-          <Text style={styles.label}>Indicator</Text>
-          <Tile id={round.indicator} size="small" />
-        </View>
-        <View style={styles.middleItem}>
-          <Text style={styles.label}>Joker</Text>
-          <Text style={styles.joker} testID="joker">
-            {jokerName}
-          </Text>
-        </View>
-        <View style={styles.middleItem}>
-          <Text style={styles.label}>Middle</Text>
-          <Text style={styles.joker} testID="middle-count">
-            {round.middle.length}
-          </Text>
-        </View>
+      <View style={styles.decor}>
+        {DECOR.map((id) => (
+          <Tile key={id} id={id} />
+        ))}
       </View>
 
-      <Text style={styles.label}>Your tiles ({deal.hand.length})</Text>
-      <View style={styles.rack} accessibilityLabel={`Your rack: ${deal.hand.map(describeTile).join(', ')}`}>
-        {deal.hand.map((id) => (
-          <Tile key={id} id={id} wild={isRealJoker(id, round.joker)} />
-        ))}
+      <View style={styles.option}>
+        <View style={styles.optionText}>
+          <Text style={styles.optionTitle}>Allow 12-13-1</Text>
+          <Text style={styles.optionHint}>Some areas count 12, 13, 1 as a run. 13-1-2 never counts.</Text>
+        </View>
+        <Switch
+          accessibilityLabel="Allow 12-13-1"
+          value={aceHigh}
+          onValueChange={setAceHigh}
+          trackColor={{ true: colors.accent, false: colors.tableDark }}
+        />
       </View>
 
       <Pressable
         accessibilityRole="button"
-        onPress={() => setDeal(dealPractice())}
+        onPress={() => router.push(`/play?aceHigh=${aceHigh ? 1 : 0}`)}
         style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
       >
-        <Text style={styles.buttonText}>Deal again</Text>
+        <Text style={styles.buttonText}>Play against bots</Text>
       </Pressable>
 
-      <Text style={styles.note}>Practice deal. Games against bots and friends are coming next.</Text>
+      <Text style={styles.note}>Playing with friends and online is coming next.</Text>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.table },
-  content: { alignItems: 'center', padding: 24, gap: 16 },
-  title: { fontSize: 48, fontWeight: '900', color: colors.text, letterSpacing: 2, marginTop: 24 },
-  subtitle: { fontSize: 16, color: colors.textMuted, marginTop: -8 },
-  middle: {
+  content: { alignItems: 'center', padding: 24, gap: 20 },
+  title: { fontSize: 56, fontWeight: '900', color: colors.text, letterSpacing: 2, marginTop: 40 },
+  subtitle: { fontSize: 16, color: colors.textMuted, marginTop: -12 },
+  decor: { flexDirection: 'row', gap: 6, marginVertical: 8 },
+  option: {
     flexDirection: 'row',
-    gap: 24,
+    alignItems: 'center',
+    gap: 12,
     backgroundColor: colors.tableDark,
     borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-  },
-  middleItem: { alignItems: 'center', gap: 6, minWidth: 64 },
-  label: { fontSize: 13, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 },
-  joker: { fontSize: 18, color: colors.text, fontWeight: '700', textTransform: 'capitalize' },
-  rack: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 4,
+    padding: 14,
+    width: '100%',
     maxWidth: 360,
-    padding: 10,
-    borderRadius: 10,
-    backgroundColor: colors.rack,
-    borderBottomWidth: 6,
-    borderBottomColor: colors.rackEdge,
   },
-  button: { backgroundColor: colors.accent, paddingVertical: 12, paddingHorizontal: 28, borderRadius: 24 },
+  optionText: { flex: 1, gap: 2 },
+  optionTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  optionHint: { color: colors.textMuted, fontSize: 12 },
+  button: { backgroundColor: colors.accent, paddingVertical: 14, paddingHorizontal: 32, borderRadius: 28 },
   buttonPressed: { opacity: 0.8 },
-  buttonText: { fontSize: 16, fontWeight: '700', color: '#2A2A2A' },
+  buttonText: { fontSize: 17, fontWeight: '800', color: '#2A2A2A' },
   note: { fontSize: 13, color: colors.textMuted, textAlign: 'center', maxWidth: 320 },
 });

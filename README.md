@@ -20,11 +20,11 @@ To run the app: `pnpm dev`, then press `w` to open it in the browser, or scan th
 
 ## Packages
 
-| Package                              | Status                                           |
-| ------------------------------------ | ------------------------------------------------ |
-| [`packages/engine`](packages/engine) | Rules engine with tests                          |
-| [`apps/client`](apps/client)         | Expo app for web, Android and iOS: first screen  |
-| `apps/server`                        | Planned: game server for lobbies and online play |
+| Package                              | Status                                               |
+| ------------------------------------ | ---------------------------------------------------- |
+| [`packages/engine`](packages/engine) | Rules engine and bots, with tests                    |
+| [`apps/client`](apps/client)         | Expo app for web, Android and iOS: play against bots |
+| `apps/server`                        | Planned: game server for lobbies and online play     |
 
 ## How changes get in
 

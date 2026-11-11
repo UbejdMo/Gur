@@ -44,7 +44,8 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "/e2e/",
-      "/dist/"
+      "/dist/",
+      "/test-utils/"
     ]
   }
 }
