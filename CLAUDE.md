@@ -21,6 +21,7 @@ Run from the repo root. Node 22 and pnpm 9 (via `corepack enable`).
 - `pnpm dev` builds the engine and starts the Expo dev server (press `w` for web, or scan the QR code with Expo Go)
 - `pnpm test:e2e` builds the web app and runs the Playwright browser tests (desktop and phone sizes)
 - Add Expo packages from `apps/client` with `pnpm exec expo install <package>`, never plain `pnpm add`, so versions match the Expo SDK.
+- Stay on TypeScript 6.x until typescript-eslint supports TypeScript 7. Keep `@types/node` on 22.x to match Node 22. Dependabot is configured to skip both, and to skip Expo-pinned packages (upgrade those with `pnpm exec expo install --fix`).
 
 ## Rules for working in this repo
 
