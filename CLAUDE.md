@@ -4,11 +4,11 @@ Gur is a closed-hand tile rummy game, played the way it is in Kosovo, for web, A
 
 ## Layout
 
-| Path              | What it is                                                                                                                                                      |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/engine` | The rules: tiles, joker, melds, closing hands, turns, scoring. Pure TypeScript, no dependencies. Used by the server (authoritative) and the app (offline bots). |
-| `apps/client`     | Expo app for web, Android and iOS (not created yet).                                                                                                            |
-| `apps/server`     | Node game server: lobbies, matchmaking, turn timer (not created yet).                                                                                           |
+| Path              | What it is                                                                                                                                                       |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/engine` | The rules: tiles, joker, melds, closing hands, turns, scoring. Pure TypeScript, no dependencies. Used by the server (authoritative) and the app (offline bots).  |
+| `apps/client`     | Expo app (Expo Router) for web, Android and iOS. Screens in `src/app/`, components in `src/components/`. See `apps/client/AGENTS.md` for Expo-specific guidance. |
+| `apps/server`     | Node game server: lobbies, matchmaking, turn timer (not created yet).                                                                                            |
 
 ## Commands
 
@@ -18,6 +18,9 @@ Run from the repo root. Node 22 and pnpm 9 (via `corepack enable`).
 - `pnpm check` runs everything CI runs: format check, lint, typecheck, tests, build. Run it before every commit.
 - `pnpm test`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm format`
 - One package: `pnpm --filter @gur/engine test`
+- `pnpm dev` builds the engine and starts the Expo dev server (press `w` for web, or scan the QR code with Expo Go)
+- `pnpm test:e2e` builds the web app and runs the Playwright browser tests (desktop and phone sizes)
+- Add Expo packages from `apps/client` with `pnpm exec expo install <package>`, never plain `pnpm add`, so versions match the Expo SDK.
 
 ## Rules for working in this repo
 
@@ -29,6 +32,8 @@ Run from the repo root. Node 22 and pnpm 9 (via `corepack enable`).
   - 12-13-1 is a table option; 13-1-2 is never valid.
 - The server is authoritative: clients send intentions, the server validates them with `@gur/engine`. Never trust a client's game state.
 - Engine functions are pure: they return a new state and never mutate their input. Illegal moves throw `RuleError`.
+- The app imports the engine's built output, so the engine must be built first (`pnpm dev` and Turbo do this).
+- Every screen element a test needs gets a `testID` or an accessibility label; tests query by role and label first.
 - Keep coverage thresholds in `packages/engine/vitest.config.ts` passing; don't lower them to make CI green.
 - Work on a branch, open a pull request into `main`, and merge only when CI is green. Use clear commit messages (`feat:`, `fix:`, `test:`, `chore:`, `docs:`).
 - Text files use LF line endings and UTF-8 (`.gitattributes`, `.editorconfig`).

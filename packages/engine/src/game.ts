@@ -90,7 +90,9 @@ export function handOf(player: Player): TileId[] {
 }
 
 function clone(game: Game): Game {
-  return structuredClone(game);
+  // Game state is plain JSON data. A JSON round trip works on every JavaScript
+  // engine the app runs on, including React Native's, unlike structuredClone.
+  return JSON.parse(JSON.stringify(game)) as Game;
 }
 
 function shuffle<T>(items: T[], rng: Rng): T[] {

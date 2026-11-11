@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": ["CI", "EXPO_*", "PLAYWRIGHT_*"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -11,6 +12,11 @@
     "test": {
       "dependsOn": ["^build"],
       "outputs": ["coverage/**"]
+    },
+    "test:e2e": {
+      "dependsOn": ["build"],
+      "outputs": ["playwright-report/**", "test-results/**"],
+      "cache": false
     }
   }
 }

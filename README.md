@@ -14,14 +14,16 @@ pnpm install
 pnpm check
 ```
 
-`pnpm check` runs the same steps as CI: format check, lint, typecheck, tests and build.
+`pnpm check` runs the same steps as CI: format check, lint, typecheck, tests and build. `pnpm test:e2e` runs the browser tests against the web build.
+
+To run the app: `pnpm dev`, then press `w` to open it in the browser, or scan the QR code with the Expo Go app on your phone.
 
 ## Packages
 
 | Package                              | Status                                           |
 | ------------------------------------ | ------------------------------------------------ |
 | [`packages/engine`](packages/engine) | Rules engine with tests                          |
-| `apps/client`                        | Planned: Expo app for web, Android and iOS       |
+| [`apps/client`](apps/client)         | Expo app for web, Android and iOS: first screen  |
 | `apps/server`                        | Planned: game server for lobbies and online play |
 
 ## How changes get in
