@@ -10,8 +10,11 @@ type Props = {
   size?: 'small' | 'regular';
   selected?: boolean;
   onPress?: () => void;
+  onPressIn?: () => void;
   testID?: string;
   disabled?: boolean;
+  /** Exact width in points, for racks that size tiles to fit the screen. Height follows. */
+  width?: number;
 };
 
 export function Tile({
@@ -20,24 +23,41 @@ export function Tile({
   size = 'regular',
   selected = false,
   onPress,
+  onPressIn,
   testID = 'tile',
   disabled,
+  width,
 }: Props) {
   const tile = getTile(id);
   const small = size === 'small';
   const label = wild ? `${describeTile(id)}, joker` : describeTile(id);
 
+  const sized = width
+    ? {
+        box: { width, height: Math.round(width * 1.4), paddingTop: width * 0.12, paddingBottom: width * 0.12 },
+        text: { fontSize: Math.round(width * 0.55) },
+        dot: { width: width * 0.18, height: width * 0.18, borderRadius: width * 0.09 },
+      }
+    : null;
+
   const face = (
     <>
       {tile.printedJoker ? (
-        <Text style={[styles.star, small && styles.starSmall]}>★</Text>
+        <Text selectable={false} style={[styles.star, small && styles.starSmall, sized?.text]}>
+          ★
+        </Text>
       ) : (
-        <Text style={[styles.number, small && styles.numberSmall, { color: tileInk[tile.color!] }]}>{tile.number}</Text>
+        <Text
+          selectable={false}
+          style={[styles.number, small && styles.numberSmall, sized?.text, { color: tileInk[tile.color!] }]}
+        >
+          {tile.number}
+        </Text>
       )}
-      <View style={[styles.dot, small && styles.dotSmall]} />
+      <View style={[styles.dot, small && styles.dotSmall, sized?.dot]} />
     </>
   );
-  const style = [styles.tile, small && styles.small, wild && styles.wild, selected && styles.selected];
+  const style = [styles.tile, small && styles.small, sized?.box, wild && styles.wild, selected && styles.selected];
 
   if (onPress) {
     return (
@@ -48,6 +68,7 @@ export function Tile({
         aria-selected={selected}
         testID={testID}
         onPress={onPress}
+        onPressIn={onPressIn}
         disabled={disabled}
         style={style}
       >
@@ -65,6 +86,8 @@ export function Tile({
 
 const styles = StyleSheet.create({
   tile: {
+    // Tiles are picked up and dragged: their numbers must never start a text selection.
+    userSelect: 'none',
     width: 40,
     height: 56,
     borderRadius: 6,

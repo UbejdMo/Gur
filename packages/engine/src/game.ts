@@ -79,7 +79,7 @@ export interface Game {
 
 export const HAND_SIZE = 14;
 export const FIRST_TURN_SECONDS = 15;
-export const TURN_SECONDS = 10;
+export const TURN_SECONDS = 15;
 export const CLOSE_SCORE = -10;
 export const DOUBLE_CLOSE_SCORE = -20;
 
@@ -340,7 +340,7 @@ export function autoDiscardTile(game: Game, seat: number): TileId {
   return candidates.reduce((best, t) => (tileValue(t, joker) > tileValue(best, joker) ? t : best));
 }
 
-/** Seconds allowed for the current turn: 15 for the first turn of a round, 10 after that. */
+/** Seconds allowed for the current turn: 15 for every turn, including the first. */
 export function turnSeconds(game: Game): number {
   return game.round.firstDiscardDone ? TURN_SECONDS : FIRST_TURN_SECONDS;
 }

@@ -59,10 +59,10 @@ describe('dealing', () => {
     }
   });
 
-  it('gives 15 seconds for the first turn and 10 after', () => {
+  it('gives 15 seconds for every turn, including the first', () => {
     const g = closingGame('R12', 'R4b');
     expect(turnSeconds(g)).toBe(15);
-    expect(turnSeconds(discard(g, 0, t('R4b')))).toBe(10);
+    expect(turnSeconds(discard(g, 0, t('R4b')))).toBe(15);
   });
 });
 
