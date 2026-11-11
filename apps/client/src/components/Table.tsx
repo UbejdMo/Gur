@@ -10,7 +10,13 @@ import { colors } from '@/theme';
 
 type Props = PracticeOptions & { onMenu: () => void };
 
-/** The practice table: you at the bottom, three bots around you, play running counter-clockwise. */
+/**
+ * The practice table: you at the bottom, three bots around you, play running counter-clockwise.
+ *
+ * Buttons here are never given `disabled`: a button that disables itself in the middle of its
+ * own press leaves the web responder stuck, which stops the next drag. They ignore presses
+ * that aren't allowed instead, and still report "disabled" to screen readers.
+ */
 export function Table({ onMenu, ...options }: Props) {
   const p = usePracticeGame(options);
   const { game } = p;
@@ -24,8 +30,8 @@ export function Table({ onMenu, ...options }: Props) {
       : round.phase === 'draw'
         ? 'Your turn: draw from the middle or take the last discard'
         : p.selected === null
-          ? 'Pick the tile to discard, or close'
-          : 'Discard it, close with it, or tap another tile to move it there';
+          ? 'Drag a tile up off your rack to discard it, or pick one and close'
+          : 'Discard it, close with it, or tap a slot to move it there';
 
   // Counter-clockwise from you: the next player sits to your right, then opposite, then left.
   const seat = (i: number) => (
@@ -52,8 +58,7 @@ export function Table({ onMenu, ...options }: Props) {
               accessibilityLabel={`Draw from the middle, ${round.middle.length} tiles left`}
               accessibilityState={{ disabled: !(p.yourTurn && round.phase === 'draw') }}
               testID="draw-middle"
-              disabled={!(p.yourTurn && round.phase === 'draw')}
-              onPress={p.drawMiddle}
+              onPress={() => p.yourTurn && round.phase === 'draw' && p.drawMiddle()}
               style={[styles.pile, p.yourTurn && round.phase === 'draw' && styles.active]}
             >
               <Text style={styles.pileCount} testID="middle-count">
@@ -61,7 +66,10 @@ export function Table({ onMenu, ...options }: Props) {
               </Text>
               <Text style={styles.pileLabel}>Middle</Text>
             </Pressable>
-            <View style={styles.centerItem}>
+            <View
+              style={[styles.centerItem, styles.discardZone, p.canDiscardNow && styles.discardZoneActive]}
+              testID="discard-zone"
+            >
               <Text style={styles.label}>Discard</Text>
               {round.lastDiscard ? (
                 <View style={p.lastDiscardTakeable && styles.activeTile}>
@@ -70,7 +78,7 @@ export function Table({ onMenu, ...options }: Props) {
                     size="small"
                     testID="last-discard"
                     wild={isRealJoker(round.lastDiscard.tile, round.joker)}
-                    onPress={p.lastDiscardTakeable ? p.takeDiscard : undefined}
+                    onPress={() => p.lastDiscardTakeable && p.takeDiscard()}
                   />
                 </View>
               ) : (
@@ -99,20 +107,21 @@ export function Table({ onMenu, ...options }: Props) {
         )}
 
         <Rack
-          groups={p.groups}
+          layout={p.layout}
           joker={round.joker}
           aceHigh={game.settings.aceHigh}
           selected={p.selected}
           onSelect={p.select}
-          onMove={p.moveSelected}
+          onMoveSelected={p.moveSelected}
+          onDrop={p.drop}
+          onDropUp={p.dropUp}
         />
 
         <View style={styles.actions}>
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ disabled: !p.canDiscard }}
-            disabled={!p.canDiscard}
-            onPress={p.discardSelected}
+            onPress={() => p.canDiscard && p.discard()}
             style={[styles.button, !p.canDiscard && styles.disabled]}
           >
             <Text style={styles.buttonText}>Discard</Text>
@@ -120,15 +129,15 @@ export function Table({ onMenu, ...options }: Props) {
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ disabled: !p.canClose }}
-            disabled={!p.canClose}
-            onPress={p.closeWithSelected}
+            onPress={() => p.canClose && p.close()}
             style={[styles.button, styles.closeButton, !p.canClose && styles.disabled]}
           >
             <Text style={styles.buttonText}>Close</Text>
           </Pressable>
         </View>
         <Text style={styles.hint}>
-          Green outlines show melds. Only tiles in a melded group are safe when someone closes.
+          Tiles side by side form a group. A green bar means the group is a meld: only those tiles are safe when someone
+          closes.
         </Text>
       </ScrollView>
 
@@ -154,6 +163,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   centerItem: { alignItems: 'center', gap: 4 },
+  discardZone: { padding: 4, borderRadius: 10, borderWidth: 2, borderColor: 'transparent' },
+  discardZoneActive: { borderColor: colors.accent, borderStyle: 'dashed' },
   label: { fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 },
   joker: { fontSize: 11, color: colors.text, textTransform: 'capitalize' },
   pile: {

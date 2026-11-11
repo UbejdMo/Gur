@@ -24,8 +24,11 @@ describe('Table', () => {
     await renderTable();
     expect(screen.getAllByTestId('seat')).toHaveLength(3);
     expect(screen.getAllByTestId('rack-tile')).toHaveLength(15);
+    expect(screen.getAllByTestId('rack-row')).toHaveLength(2);
     expect(screen.getByTestId('middle-count')).toHaveTextContent('48');
-    expect(screen.getByTestId('status')).toHaveTextContent('Pick the tile to discard, or close');
+    expect(screen.getByTestId('status')).toHaveTextContent(
+      'Drag a tile up off your rack to discard it, or pick one and close',
+    );
   });
 
   it('closes a hand and shows the results', async () => {
@@ -37,17 +40,23 @@ describe('Table', () => {
     expect(screen.getByTestId('score-0')).toHaveTextContent('-10');
   });
 
-  it('outlines a group once it becomes a meld', async () => {
+  it('shows a green bar once tiles side by side form a meld', async () => {
     await renderTable();
     expect(screen.queryAllByTestId('rack-meld')).toHaveLength(0);
     const tile = (name: string) => screen.getAllByRole('button', { name })[0]!;
-    await fireEvent.press(tile('yellow 7'));
-    await fireEvent.press(screen.getByRole('button', { name: 'New group' }));
-    await fireEvent.press(tile('yellow 8'));
-    await fireEvent.press(tile('yellow 7'));
-    expect(screen.queryAllByTestId('rack-meld')).toHaveLength(0);
-    await fireEvent.press(tile('yellow 9'));
-    await fireEvent.press(tile('yellow 8'));
+    // the bottom row's last five slots (21 to 24) are empty; put yellow 7, 8, 9 side by side there
+    const moves: [string, string][] = [
+      ['yellow 7', 'Empty slot 21'],
+      ['yellow 8', 'Empty slot 22'],
+    ];
+    for (const [name, slot] of moves) {
+      await fireEvent.press(tile(name));
+      await fireEvent.press(screen.getByRole('button', { name: slot }));
+    }
+    // moving the yellow 7 and 8 away leaves the four 11s side by side: already a meld
     expect(screen.getAllByTestId('rack-meld')).toHaveLength(1);
+    await fireEvent.press(tile('yellow 9'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Empty slot 23' }));
+    expect(screen.getAllByTestId('rack-meld')).toHaveLength(2);
   });
 });
