@@ -8,6 +8,23 @@ updates:
       dev-tools:
         dependency-type: development
     open-pull-requests-limit: 5
+    ignore:
+      # typescript-eslint does not support TypeScript 7 yet; upgrade on purpose when it does.
+      - dependency-name: typescript
+        versions: ['>=7.0.0']
+      # Node type definitions must match the Node version we run (22, see .nvmrc).
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      # Expo pins these to the SDK. Upgrade them with `pnpm exec expo install --fix` during an SDK upgrade instead.
+      - dependency-name: expo
+      - dependency-name: 'expo-*'
+      - dependency-name: '@expo/*'
+      - dependency-name: jest-expo
+      - dependency-name: react
+      - dependency-name: react-dom
+      - dependency-name: react-native
+      - dependency-name: 'react-native-*'
+      - dependency-name: '@types/react'
 
   - package-ecosystem: github-actions
     directory: /
