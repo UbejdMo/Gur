@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import Home from '@/app/index';
 import { Table } from '@/components/Table';
-import { practiceGame } from '../test-utils/deal';
+import { ALMOST, practiceGame } from '../test-utils/deal';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), replace: jest.fn() } }));
 
@@ -26,9 +26,15 @@ describe('Table', () => {
     expect(screen.getAllByTestId('rack-tile')).toHaveLength(15);
     expect(screen.getAllByTestId('rack-row')).toHaveLength(2);
     expect(screen.getByTestId('middle-count')).toHaveTextContent('48');
-    expect(screen.getByTestId('status')).toHaveTextContent(
-      'Drag a tile up off your rack to discard it, or pick one and close',
-    );
+    expect(screen.getByTestId('status')).toHaveTextContent('You can close! Drag your extra tile up, or press Close');
+  });
+
+  it('tells you to discard when the hand is not complete, and keeps Close off', async () => {
+    await renderTable(practiceGame({ you: ALMOST }));
+    expect(screen.getByTestId('status')).toHaveTextContent('Drag a tile up off your rack to discard it');
+    expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByTestId('results')).toBeNull();
   });
 
   it('closes a hand and shows the results', async () => {

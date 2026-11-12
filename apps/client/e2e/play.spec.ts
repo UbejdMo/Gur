@@ -11,7 +11,9 @@ async function startGame(page: Page) {
 async function readyToDiscard(page: Page): Promise<boolean> {
   const status = page.getByTestId('status');
   const results = page.getByTestId('results');
-  await expect(status.filter({ hasText: /^Your turn|^Drag a tile/ }).or(results)).toBeVisible({ timeout: 15_000 });
+  await expect(status.filter({ hasText: /^Your turn|^Drag a tile|^You can close/ }).or(results)).toBeVisible({
+    timeout: 15_000,
+  });
   if (await results.isVisible()) return false;
   if ((await status.textContent())?.startsWith('Your turn')) await page.getByTestId('draw-middle').click();
   await expect(page.getByTestId('rack-tile')).toHaveCount(15);

@@ -10,9 +10,12 @@ import { ROWS, SLOTS_PER_ROW } from '@/game/rackLayout';
 import type { Layout } from '@/game/rackLayout';
 import { colors } from '@/theme';
 
-const PAD = 8;
-const ROW_GAP = 10;
+const PAD = 22; // room for the bolts at each end
+const ROW_GAP = 6;
 const BAR = 4;
+// Each row is a wooden plank: padding and edges around the tiles.
+const PLANK_TOP = 3 + 5; // light edge + padding
+const PLANK_BOTTOM = 5 + 4; // padding + dark edge
 
 type Props = {
   layout: Layout;
@@ -24,6 +27,8 @@ type Props = {
   onDrop: (tile: TileId, slot: number) => void;
   /** A tile was dragged up off the rack, towards the discard pile. */
   onDropUp: (tile: TileId) => void;
+  /** Largest slot width in points, so the rack fits the screen's height too. */
+  maxSlot?: number;
 };
 
 /**
@@ -32,7 +37,17 @@ type Props = {
  * slot. Tiles side by side form a group; a green bar under a group means it is a
  * meld, which is all that counts as connected when someone closes.
  */
-export function Rack({ layout, joker, aceHigh, selected, onSelect, onMoveSelected, onDrop, onDropUp }: Props) {
+export function Rack({
+  layout,
+  joker,
+  aceHigh,
+  selected,
+  onSelect,
+  onMoveSelected,
+  onDrop,
+  onDropUp,
+  maxSlot = 64,
+}: Props) {
   // The rack, not each tile, handles dragging: it contains every tile, so it sees the pointer
   // wherever it moves. Pressing a tile marks it; moving the pointer then drags that tile.
   // Set synchronously at the very start of a press, so even a quick flick knows which tile it moved.
@@ -42,12 +57,12 @@ export function Rack({ layout, joker, aceHigh, selected, onSelect, onMoveSelecte
   // A sensible phone width until the real width is known.
   const [width, setWidth] = useState(360);
 
-  const slot = Math.max(22, Math.min(48, Math.floor((width - PAD * 2) / SLOTS_PER_ROW)));
+  const slot = Math.max(22, Math.min(maxSlot, Math.floor((width - PAD * 2) / SLOTS_PER_ROW)));
   const tileW = slot - 2;
   const rowH = Math.round(tileW * 1.4) + BAR + 2;
 
   const rows = Array.from({ length: ROWS }, (_, r) => layout.slice(r * SLOTS_PER_ROW, (r + 1) * SLOTS_PER_ROW));
-  const rowStride = rowH + ROW_GAP;
+  const rowStride = rowH + PLANK_TOP + PLANK_BOTTOM + ROW_GAP;
 
   // Rebuilt when a tile is pressed or the rack is resized, never during a drag.
   const responder = useMemo(() => {
@@ -97,63 +112,74 @@ export function Rack({ layout, joker, aceHigh, selected, onSelect, onMoveSelecte
         rows.map((cells, r) => (
           <View
             key={r}
-            style={[styles.row, { height: rowH }, dragging !== null && cells.includes(dragging) && styles.liftedRow]}
+            style={[styles.plank, dragging !== null && cells.includes(dragging) && styles.liftedRow]}
             testID="rack-row"
           >
-            {segments(cells).map((seg) => {
-              const base = r * SLOTS_PER_ROW + seg.start;
-              if (seg.tiles.length === 0) {
+            <View style={[styles.bolt, styles.boltLeft]} />
+            <View style={[styles.bolt, styles.boltRight]} />
+            <View style={[styles.row, { height: rowH }]}>
+              {segments(cells).map((seg) => {
+                const base = r * SLOTS_PER_ROW + seg.start;
+                if (seg.tiles.length === 0) {
+                  return (
+                    <Pressable
+                      key={`empty-${base}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Empty slot ${base + 1}`}
+                      testID="rack-slot-empty"
+                      onPress={() => selected !== null && onMoveSelected(base)}
+                      style={[
+                        styles.empty,
+                        { width: slot, height: rowH - BAR - 2 },
+                        selected !== null && styles.emptyActive,
+                      ]}
+                    />
+                  );
+                }
+                const meld =
+                  seg.tiles.length >= 3 &&
+                  isMeld(
+                    seg.tiles.map((t) => faceOf(t, joker)),
+                    aceHigh,
+                  );
                 return (
-                  <Pressable
-                    key={`empty-${base}`}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Empty slot ${base + 1}`}
-                    testID="rack-slot-empty"
-                    onPress={() => selected !== null && onMoveSelected(base)}
-                    style={[
-                      styles.empty,
-                      { width: slot, height: rowH - BAR - 2 },
-                      selected !== null && styles.emptyActive,
-                    ]}
-                  />
-                );
-              }
-              const meld =
-                seg.tiles.length >= 3 &&
-                isMeld(
-                  seg.tiles.map((t) => faceOf(t, joker)),
-                  aceHigh,
-                );
-              return (
-                <View key={`run-${base}`} testID={meld ? 'rack-meld' : 'rack-group'}>
-                  <View style={styles.run}>
-                    {seg.tiles.map((t, i) => (
-                      <Animated.View
-                        key={t}
-                        onStartShouldSetResponderCapture={(e) => {
-                          pressed.current = { tile: t, slot: base + i, x: e.nativeEvent.pageX, y: e.nativeEvent.pageY };
-                          return false;
-                        }}
-                        style={[
-                          { width: slot, alignItems: 'center' },
-                          dragging === t && [styles.dragging, { transform: pan.getTranslateTransform() }],
-                        ]}
-                      >
-                        <Tile
-                          id={t}
-                          width={tileW}
-                          testID="rack-tile"
-                          wild={isRealJoker(t, joker)}
-                          selected={selected === t}
-                          onPress={() => (selected === null || selected === t ? onSelect(t) : onMoveSelected(base + i))}
-                        />
-                      </Animated.View>
-                    ))}
+                  <View key={`run-${base}`} testID={meld ? 'rack-meld' : 'rack-group'}>
+                    <View style={styles.run}>
+                      {seg.tiles.map((t, i) => (
+                        <Animated.View
+                          key={t}
+                          onStartShouldSetResponderCapture={(e) => {
+                            pressed.current = {
+                              tile: t,
+                              slot: base + i,
+                              x: e.nativeEvent.pageX,
+                              y: e.nativeEvent.pageY,
+                            };
+                            return false;
+                          }}
+                          style={[
+                            { width: slot, alignItems: 'center' },
+                            dragging === t && [styles.dragging, { transform: pan.getTranslateTransform() }],
+                          ]}
+                        >
+                          <Tile
+                            id={t}
+                            width={tileW}
+                            testID="rack-tile"
+                            wild={isRealJoker(t, joker)}
+                            selected={selected === t}
+                            onPress={() =>
+                              selected === null || selected === t ? onSelect(t) : onMoveSelected(base + i)
+                            }
+                          />
+                        </Animated.View>
+                      ))}
+                    </View>
+                    <View style={[styles.bar, meld && styles.barMeld]} />
                   </View>
-                  <View style={[styles.bar, meld && styles.barMeld]} />
-                </View>
-              );
-            })}
+                );
+              })}
+            </View>
           </View>
         ))}
     </View>
@@ -195,14 +221,38 @@ const styles = StyleSheet.create({
   rack: {
     width: '100%',
     paddingHorizontal: PAD,
-    paddingTop: PAD,
-    paddingBottom: PAD,
+    paddingVertical: 8,
     gap: ROW_GAP,
-    borderRadius: 10,
-    backgroundColor: colors.rack,
-    borderBottomWidth: 6,
-    borderBottomColor: colors.rackEdge,
+    borderRadius: 14,
+    backgroundColor: colors.wood,
+    borderBottomWidth: 8,
+    borderBottomColor: colors.woodDark,
   },
+  plank: {
+    marginHorizontal: -PAD + 6,
+    paddingHorizontal: PAD - 6,
+    paddingTop: 5,
+    paddingBottom: 5,
+    borderRadius: 8,
+    backgroundColor: colors.woodPlank,
+    borderTopWidth: 3,
+    borderTopColor: colors.woodLight,
+    borderBottomWidth: 4,
+    borderBottomColor: colors.woodDark,
+  },
+  bolt: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.bolt,
+    borderWidth: 1,
+    borderColor: colors.woodDark,
+  },
+  boltLeft: { left: 4 },
+  boltRight: { right: 4 },
   row: { flexDirection: 'row', alignItems: 'flex-start' },
   run: { flexDirection: 'row' },
   bar: { height: BAR, marginTop: 2, marginHorizontal: 2, borderRadius: 2 },
