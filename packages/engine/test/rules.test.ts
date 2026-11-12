@@ -6,7 +6,9 @@ import {
   identicalPairCount,
   isMeld,
   jokerFromIndicator,
-  penalty,
+  arrangedClosingHand,
+  bestPenalty,
+  unconnectedTiles,
   tileValue,
 } from '../src';
 import type { Joker } from '../src';
@@ -139,12 +141,30 @@ describe('closing hands from the tutorial screenshots', () => {
 });
 
 describe('unconnected tiles and the restart check', () => {
-  it('counts tiles as the player arranged them', () => {
-    const groups = [ts('B1 B2 B3'), ts('K13'), ts('R13')];
-    expect(penalty(groups, plainJoker, true)).toBe(26);
+  it('points count the best arrangement, however the rack is arranged', () => {
+    // one meld and two loose 13s, whether the meld is laid out or not
+    expect(bestPenalty(ts('B1 B2 B3 K13 Y13'), plainJoker, true)).toBe(26);
+    expect(bestPenalty(ts('K13 B3 Y13 B1 B2'), plainJoker, true)).toBe(26);
+  });
+
+  it('the rack shows as connected only what is laid out as melds', () => {
+    expect(unconnectedTiles([ts('B1 B2 B3'), ts('K13'), ts('R13')], plainJoker, true)).toEqual(ts('K13 R13'));
     // same tiles, badly arranged: nothing is connected
-    const bad = [ts('B1 B2'), ts('B3 K13 R13')];
-    expect(penalty(bad, plainJoker, true)).toBe(32);
+    expect(unconnectedTiles([ts('B1 B2'), ts('B3 K13 R13')], plainJoker, true)).toHaveLength(5);
+  });
+
+  it('a closing hand must be laid out as melds, except seven pairs and mosaic', () => {
+    const melds = ['K11 B11 R11 Y11', 'Y7 Y8 Y9 Y10', 'R3 R4 R5', 'K3 B3 R3b'].map(ts);
+    expect(arrangedClosingHand(melds, plainJoker, true)?.kind).toBe('melds');
+    // the same 14 tiles in one long row are not connected
+    expect(arrangedClosingHand([melds.flat()], plainJoker, true)).toBeNull();
+    // 13 tiles are never a closing hand
+    expect(arrangedClosingHand(melds.slice(0, 3).concat([ts('K3 B3')]), plainJoker, true)).toBeNull();
+    const pairs = [ts('R1 R1b Y6 Y6b K9 K9b B2 B2b B4 B4b B6 B6b R12 R12b')];
+    expect(arrangedClosingHand(pairs, plainJoker, true)?.kind).toBe('sevenPairs');
+    const mosaic = [ts('R1 Y2 B3 K4 R5 Y6 B7 K8 R9 Y10 B11 K12 R13 Y1')];
+    expect(arrangedClosingHand(mosaic, plainJoker, true)?.kind).toBe('mosaic');
+    expect(arrangedClosingHand(mosaic, plainJoker, false)).toBeNull();
   });
 
   it('3 identical pairs offer a restart', () => {

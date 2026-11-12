@@ -2,25 +2,34 @@ import { useEffect, useMemo, useReducer, useState } from 'react';
 import { createGame, handOf, turnSeconds } from '@gur/engine';
 import type { Game, TileId } from '@gur/engine';
 import { YOU, closingTiles, initialState, practiceReducer } from './practiceReducer';
+import type { Place } from './practiceReducer';
+import type { Side } from './rackLayout';
 
 export { YOU };
 export const PLAYER_NAMES = ['You', 'Bot 1', 'Bot 2', 'Bot 3'];
 
 export type PracticeOptions = {
   aceHigh: boolean;
-  /** Pause before each bot move, so people can follow the play. */
-  botDelayMs?: number;
+  /**
+   * How long a bot takes over its turn, in milliseconds: one number, or [shortest, longest] for a
+   * random time in between. Bots are slow on purpose, so you have time to arrange your rack.
+   */
+  botDelayMs?: number | readonly [number, number];
   /** Turn timer for your turns (15 seconds). */
   timer?: boolean;
   /** Starts a round; tests pass a fixed deal. */
   newGame?: (aceHigh: boolean) => Game;
 };
 
+/** Each bot takes 4 to 10 seconds over its turn. */
+export const SLOW_BOTS = [4000, 10000] as const;
+export const FAST_BOTS = 700;
+
 const defaultNewGame = (aceHigh: boolean) => createGame({ aceHigh, rounds: 1 }, PLAYER_NAMES, Math.random);
 
 export function usePracticeGame({
   aceHigh,
-  botDelayMs = 700,
+  botDelayMs = SLOW_BOTS,
   timer = true,
   newGame = defaultNewGame,
 }: PracticeOptions) {
@@ -31,16 +40,19 @@ export function usePracticeGame({
   const yourTurn = status === 'playing' && round.current === YOU;
   const hand = handOf(game.players[YOU]!);
 
-  // Bots play their turns one after another.
+  // A turn is identified by round and turn number, so drawing or moving tiles doesn't restart a clock.
+  const turn = `${round.number}:${round.turn}:${game.results.length}`;
+
+  // Bots play their turns one after another. You can keep arranging your rack while they think.
+  const botPlaying = status === 'playing' && round.current !== YOU;
+  const [botMin, botMax] = typeof botDelayMs === 'number' ? [botDelayMs, botDelayMs] : botDelayMs;
   useEffect(() => {
-    if (game.status !== 'playing' || game.round.current === YOU) return;
-    const t = setTimeout(() => dispatch({ type: 'bot' }), botDelayMs);
+    if (!botPlaying) return;
+    const t = setTimeout(() => dispatch({ type: 'bot' }), botMin + Math.random() * (botMax - botMin));
     return () => clearTimeout(t);
-  }, [game, botDelayMs]);
+  }, [botPlaying, turn, botMin, botMax]);
 
   // Your turn timer: when it runs out, the engine draws and discards for you.
-  // A turn is identified by round and discard count, so drawing doesn't restart it.
-  const turn = `${round.number}:${round.discards.length + game.results.length}`;
   const turnTotal = turnSeconds(game);
   const timing = timer && yourTurn;
   useEffect(() => {
@@ -73,10 +85,11 @@ export function usePracticeGame({
     () => ({
       select: (tile: TileId) => dispatch({ type: 'select', tile }),
       moveSelected: (slot: number) => dispatch({ type: 'moveSelected', slot }),
-      drop: (tile: TileId, slot: number) => dispatch({ type: 'drop', tile, slot }),
+      drop: (tile: TileId, slot: number, side?: Side) => dispatch({ type: 'drop', tile, slot, side }),
+      resize: (cols: number) => dispatch({ type: 'resize', cols }),
       dropUp: (tile: TileId) => dispatch({ type: 'dropUp', tile }),
-      drawMiddle: () => dispatch({ type: 'drawMiddle' }),
-      takeDiscard: () => dispatch({ type: 'takeDiscard' }),
+      drawMiddle: (at?: Place) => dispatch({ type: 'drawMiddle', at }),
+      takeDiscard: (at?: Place) => dispatch({ type: 'takeDiscard', at }),
       discard: (tile?: TileId) => dispatch({ type: 'discard', tile }),
       close: (tile?: TileId) => dispatch({ type: 'close', tile }),
     }),

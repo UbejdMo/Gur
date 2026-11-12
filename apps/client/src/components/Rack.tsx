@@ -1,16 +1,18 @@
 /* eslint-disable react-hooks/refs -- dragging keeps the pressed tile in a ref: it is written and read
    only inside touch handlers, which run outside render. */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import type { ComponentRef, Ref } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, View } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
 import { faceOf, isMeld, isRealJoker } from '@gur/engine';
 import type { Joker, TileId } from '@gur/engine';
 import { Tile } from './Tile';
-import { ROWS, SLOTS_PER_ROW } from '@/game/rackLayout';
-import type { Layout } from '@/game/rackLayout';
+import { MAX_COLS, MIN_COLS, ROWS, colsOf } from '@/game/rackLayout';
+import type { Layout, Side } from '@/game/rackLayout';
 import { colors } from '@/theme';
 
-const PAD = 22; // room for the bolts at each end
+const PAD = 16; // room for the bolts at each end
+const PAD_TOP = 8;
 const ROW_GAP = 6;
 const BAR = 4;
 // Each row is a wooden plank: padding and edges around the tiles.
@@ -24,18 +26,31 @@ type Props = {
   selected: TileId | null;
   onSelect: (tile: TileId) => void;
   onMoveSelected: (slot: number) => void;
-  onDrop: (tile: TileId, slot: number) => void;
+  /** A tile was dropped on a slot; `side` is the half of the slot it landed on. */
+  onDrop: (tile: TileId, slot: number, side: Side) => void;
   /** A tile was dragged up off the rack, towards the discard pile. */
   onDropUp: (tile: TileId) => void;
   /** Largest slot width in points, so the rack fits the screen's height too. */
   maxSlot?: number;
+  /** The rack has room for a different number of columns than the layout has. */
+  onResize?: (cols: number) => void;
+  ref?: Ref<RackHandle>;
+};
+
+/** A place on the rack: a slot, and which half of it was aimed at. */
+export type RackPlace = { slot: number; side: Side };
+
+export type RackHandle = {
+  /** Finds the place under a point on the screen, for tiles dragged onto the rack from the table. */
+  locate: (pageX: number, pageY: number, found: (place: RackPlace | null) => void) => void;
 };
 
 /**
- * Your two-row rack. Drag a tile to any slot (onto another tile to swap them),
- * or drag it up off the rack to discard it. You can also tap a tile, then tap a
- * slot. Tiles side by side form a group; a green bar under a group means it is a
- * meld, which is all that counts as connected when someone closes.
+ * Your two-row rack, as wide as the screen: every part of it takes tiles. Drag a tile to any
+ * slot; dropped on another tile it slides in beside it (left or right half) and the others
+ * move along. Drag it up off the rack to discard it. You can also tap a tile, then tap a slot.
+ * Tiles side by side form a group; a green bar under a group means it is a meld, which is
+ * what a close needs.
  */
 export function Rack({
   layout,
@@ -47,6 +62,8 @@ export function Rack({
   onDrop,
   onDropUp,
   maxSlot = 64,
+  onResize,
+  ref,
 }: Props) {
   // The rack, not each tile, handles dragging: it contains every tile, so it sees the pointer
   // wherever it moves. Pressing a tile marks it; moving the pointer then drags that tile.
@@ -55,14 +72,41 @@ export function Rack({
   const [dragging, setDragging] = useState<TileId | null>(null);
   const [pan] = useState(() => new Animated.ValueXY());
   // A sensible phone width until the real width is known.
-  const [width, setWidth] = useState(360);
+  const [measured, setMeasured] = useState<number | null>(null);
+  const rackRef = useRef<ComponentRef<typeof View>>(null);
 
-  const slot = Math.max(22, Math.min(maxSlot, Math.floor((width - PAD * 2) / SLOTS_PER_ROW)));
+  // Tiles are as big as the screen's height allows; the rack then has as many columns as fit
+  // across it, so the whole width is usable.
+  const cols = colsOf(layout);
+  const avail = (measured ?? 360) - PAD * 2;
+  const ideal = Math.max(22, Math.min(maxSlot, Math.floor(avail / MIN_COLS)));
+  const wantCols = Math.max(MIN_COLS, Math.min(MAX_COLS, Math.floor(avail / ideal)));
+  const slot = Math.max(14, Math.min(Math.floor(avail / cols), Math.ceil(ideal * 1.15)));
+  // Any width left over is shared between the two ends.
+  const inset = Math.max(0, Math.floor((avail - cols * slot) / 2));
   const tileW = slot - 2;
   const rowH = Math.round(tileW * 1.4) + BAR + 2;
 
-  const rows = Array.from({ length: ROWS }, (_, r) => layout.slice(r * SLOTS_PER_ROW, (r + 1) * SLOTS_PER_ROW));
+  const rows = Array.from({ length: ROWS }, (_, r) => layout.slice(r * cols, (r + 1) * cols));
   const rowStride = rowH + PLANK_TOP + PLANK_BOTTOM + ROW_GAP;
+
+  useEffect(() => {
+    if (measured !== null && wantCols !== cols) onResize?.(wantCols);
+  }, [measured, wantCols, cols, onResize]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      locate: (pageX, pageY, found) => {
+        const rack = rackRef.current;
+        if (!rack) return found(null);
+        rack.measureInWindow((x, y) =>
+          found(placeAt((pageX - x - PAD - inset) / slot, (pageY - y - PAD_TOP + ROW_GAP / 2) / rowStride, cols)),
+        );
+      },
+    }),
+    [cols, inset, slot, rowStride],
+  );
 
   // Rebuilt when a tile is pressed or the rack is resized, never during a drag.
   const responder = useMemo(() => {
@@ -93,22 +137,23 @@ export function Rack({
         const from = pressed.current;
         reset();
         if (!from) return;
-        const target = dropTarget(from.slot, g.moveX - from.x, g.moveY - from.y, slot, rowStride);
+        const target = dropTarget(from.slot, g.moveX - from.x, g.moveY - from.y, slot, rowStride, cols);
         if (target === 'up') onDropUp(from.tile);
-        else if (target !== null && target !== from.slot) onDrop(from.tile, target);
+        else if (target !== null && target.slot !== from.slot) onDrop(from.tile, target.slot, target.side);
       },
       onPanResponderTerminate: reset,
     });
-  }, [pan, slot, rowStride, onDrop, onDropUp]);
+  }, [pan, slot, rowStride, cols, onDrop, onDropUp]);
 
   return (
     <View
       {...responder.panHandlers}
+      ref={rackRef}
       style={styles.rack}
       testID="rack"
-      onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}
+      onLayout={(e: LayoutChangeEvent) => setMeasured(e.nativeEvent.layout.width)}
     >
-      {width > 0 &&
+      {avail > 0 &&
         rows.map((cells, r) => (
           <View
             key={r}
@@ -117,9 +162,9 @@ export function Rack({
           >
             <View style={[styles.bolt, styles.boltLeft]} />
             <View style={[styles.bolt, styles.boltRight]} />
-            <View style={[styles.row, { height: rowH }]}>
+            <View style={[styles.row, { height: rowH, marginLeft: inset }]}>
               {segments(cells).map((seg) => {
-                const base = r * SLOTS_PER_ROW + seg.start;
+                const base = r * cols + seg.start;
                 if (seg.tiles.length === 0) {
                   return (
                     <Pressable
@@ -199,7 +244,19 @@ function segments(cells: Layout): { start: number; tiles: TileId[] }[] {
 }
 
 /**
- * Where a drag ends, from where it started and how far it moved: a slot on the
+ * The place at a point on the rack, measured in slots across and rows down from the first slot.
+ * Null when the point is off the rack.
+ */
+export function placeAt(across: number, down: number, cols: number): RackPlace | null {
+  const row = Math.floor(down);
+  // Half a slot of grace past either end still counts as the end slot.
+  if (row < 0 || row >= ROWS || across < -0.5 || across > cols + 0.5) return null;
+  const col = Math.min(cols - 1, Math.max(0, Math.floor(across)));
+  return { slot: row * cols + col, side: across - col < 0.5 ? 'left' : 'right' };
+}
+
+/**
+ * Where a drag ends, from where it started and how far it moved: a place on the
  * rack, "up" when it left the rack upwards, or null to snap back.
  */
 export function dropTarget(
@@ -208,20 +265,20 @@ export function dropTarget(
   dy: number,
   slotWidth: number,
   rowStride: number,
-): number | 'up' | null {
-  const col = (from % SLOTS_PER_ROW) + Math.round(dx / slotWidth);
-  const rowFloat = Math.floor(from / SLOTS_PER_ROW) + dy / rowStride;
-  if (rowFloat < -0.6) return 'up';
-  const row = Math.round(rowFloat);
-  if (row < 0 || row >= ROWS || col < 0 || col >= SLOTS_PER_ROW) return null;
-  return row * SLOTS_PER_ROW + col;
+  cols: number,
+): RackPlace | 'up' | null {
+  // Follow the middle of the dragged tile.
+  const across = (from % cols) + 0.5 + dx / slotWidth;
+  const down = Math.floor(from / cols) + 0.5 + dy / rowStride;
+  if (down < -0.1) return 'up';
+  return placeAt(across, down, cols);
 }
 
 const styles = StyleSheet.create({
   rack: {
     width: '100%',
     paddingHorizontal: PAD,
-    paddingVertical: 8,
+    paddingVertical: PAD_TOP,
     gap: ROW_GAP,
     borderRadius: 14,
     backgroundColor: colors.wood,
@@ -243,22 +300,25 @@ const styles = StyleSheet.create({
   bolt: {
     position: 'absolute',
     top: '50%',
-    marginTop: -4,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    marginTop: -3,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: colors.bolt,
     borderWidth: 1,
     borderColor: colors.woodDark,
   },
-  boltLeft: { left: 4 },
-  boltRight: { right: 4 },
+  boltLeft: { left: 2 },
+  boltRight: { right: 2 },
   row: { flexDirection: 'row', alignItems: 'flex-start' },
   run: { flexDirection: 'row' },
   bar: { height: BAR, marginTop: 2, marginHorizontal: 2, borderRadius: 2 },
   barMeld: { backgroundColor: colors.meld },
   empty: { borderRadius: 6 },
-  emptyActive: { borderWidth: 1, borderStyle: 'dashed', borderColor: colors.tile },
-  dragging: { zIndex: 10, elevation: 10, opacity: 0.9 },
+  // While a tile is picked, the free slots lighten a little: no outlines, the whole rack is in play.
+  emptyActive: { backgroundColor: 'rgba(255, 255, 255, 0.07)' },
+  // In the air the tile lets the pointer through: letting go must not count as a click on it
+  // (a browser would send one, because the tile is still under the pointer, and select it).
+  dragging: { zIndex: 10, elevation: 10, opacity: 0.9, pointerEvents: 'none' },
   liftedRow: { zIndex: 10, elevation: 10 },
 });

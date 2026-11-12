@@ -9,6 +9,7 @@ const DECOR = [tileId('red', 7), tileId('yellow', 8), tileId('blue', 9), 104];
 
 export default function Home() {
   const [aceHigh, setAceHigh] = useState(true);
+  const [slowBots, setSlowBots] = useState(true);
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -36,9 +37,22 @@ export default function Home() {
         />
       </View>
 
+      <View style={styles.option}>
+        <View style={styles.optionText}>
+          <Text style={styles.optionTitle}>Bots take their time</Text>
+          <Text style={styles.optionHint}>Each bot takes up to 10 seconds, so you can arrange your tiles.</Text>
+        </View>
+        <Switch
+          accessibilityLabel="Bots take their time"
+          value={slowBots}
+          onValueChange={setSlowBots}
+          trackColor={{ true: colors.accent, false: colors.tableDark }}
+        />
+      </View>
+
       <Pressable
         accessibilityRole="button"
-        onPress={() => router.push(`/play?aceHigh=${aceHigh ? 1 : 0}`)}
+        onPress={() => router.push(`/play?aceHigh=${aceHigh ? 1 : 0}${slowBots ? '' : '&bots=fast'}`)}
         style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
       >
         <Text style={styles.buttonText}>Play against bots</Text>

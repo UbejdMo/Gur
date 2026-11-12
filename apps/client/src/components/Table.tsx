@@ -1,8 +1,11 @@
+import { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { handOf, isRealJoker, tileId } from '@gur/engine';
+import { handOf, tileId } from '@gur/engine';
+import { DiscardRow } from './DiscardRow';
 import { MiddlePile } from './MiddlePile';
 import { PlayerPanel } from './PlayerPanel';
 import { Rack } from './Rack';
+import type { RackHandle } from './Rack';
 import { ResultsOverlay } from './ResultsOverlay';
 import { Tile } from './Tile';
 import { PLAYER_NAMES, YOU, usePracticeGame } from '@/game/usePracticeGame';
@@ -11,17 +14,12 @@ import { colors } from '@/theme';
 
 type Props = PracticeOptions & { onMenu: () => void };
 
-/** Where each seat's last discard lies on the felt: next to the player who discarded it. */
-const DISCARD_SPOT = [
-  { bottom: 12, right: 14 }, // you
-  { top: 12, right: 14 }, // right
-  { top: 12, left: 14 }, // across
-  { bottom: 12, left: 14 }, // left: the tile you can take
-] as const;
-
 /**
  * The practice table: a felt table in the middle, players on both sides, your rack below.
  * Play runs counter-clockwise: you, the player on your right, the one across, the one on your left.
+ *
+ * The felt shows the middle and the last six discarded tiles. The newest discard and the top of
+ * the middle can be tapped, or dragged onto the rack to land exactly where you want them.
  *
  * Buttons here are never given `disabled`: a button that disables itself in the middle of its
  * own press leaves the web responder stuck, which stops the next drag. They ignore presses
@@ -34,13 +32,25 @@ export function Table({ onMenu, ...options }: Props) {
   const playing = game.status === 'playing';
   const { width, height } = useWindowDimensions();
   const wide = width >= 700 && width > height;
+  // While a tile from the table is in the air, the table is lifted above the rack so it stays in view.
+  const [lifted, setLifted] = useState(false);
+  const rackRef = useRef<RackHandle>(null);
+  const { drawMiddle, takeDiscard } = p;
+  // A tile let go over the rack lands on that slot; let go anywhere else, it goes back.
+  const dropOnRack = useMemo(
+    () => ({
+      middle: (x: number, y: number) => rackRef.current?.locate(x, y, (place) => place && drawMiddle(place)),
+      discard: (x: number, y: number) => rackRef.current?.locate(x, y, (place) => place && takeDiscard(place)),
+    }),
+    [drawMiddle, takeDiscard],
+  );
 
   const status = !playing
     ? 'Round over'
     : !p.yourTurn
       ? `${PLAYER_NAMES[round.current]} is playing…`
       : round.phase === 'draw'
-        ? 'Your turn: draw from the middle or take the last discard'
+        ? 'Your turn: draw from the middle or take the last discard (tap or drag)'
         : p.canClose
           ? 'You can close! Drag your extra tile up, or press Close'
           : p.selected === null
@@ -68,28 +78,29 @@ export function Table({ onMenu, ...options }: Props) {
   );
 
   const felt = (
-    <View style={[styles.felt, wide ? styles.feltWide : styles.feltNarrow]}>
+    <View
+      style={[styles.felt, wide ? styles.feltWide : styles.feltNarrow, !wide && lifted && styles.lifted]}
+      testID="felt"
+    >
       <MiddlePile
         count={round.middle.length}
         indicator={round.indicator}
         canDraw={p.yourTurn && round.phase === 'draw'}
-        onDraw={p.drawMiddle}
+        onDraw={drawMiddle}
+        onDropAt={dropOnRack.middle}
+        onDragChange={setLifted}
         tileWidth={feltTile}
       />
-      {round.lastDiscard && (
-        <View style={[styles.discard, DISCARD_SPOT[round.lastDiscard.by]]}>
-          <View style={p.lastDiscardTakeable && styles.takeable}>
-            <Tile
-              id={round.lastDiscard.tile}
-              width={feltTile + 6}
-              testID="last-discard"
-              wild={isRealJoker(round.lastDiscard.tile, round.joker)}
-              onPress={() => p.lastDiscardTakeable && p.takeDiscard()}
-            />
-          </View>
-        </View>
-      )}
-      {p.canDiscardNow && <Text style={styles.feltHint}>Drag a tile up to play it</Text>}
+      <DiscardRow
+        discards={round.discards}
+        last={round.lastDiscard?.tile ?? null}
+        takeable={p.lastDiscardTakeable}
+        joker={round.joker}
+        tileWidth={feltTile + 4}
+        onTake={takeDiscard}
+        onDropAt={dropOnRack.discard}
+        onDragChange={setLifted}
+      />
     </View>
   );
 
@@ -121,14 +132,12 @@ export function Table({ onMenu, ...options }: Props) {
       >
         <Text style={styles.buttonText}>Discard</Text>
       </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ disabled: !p.canClose }}
-        onPress={() => p.canClose && p.close()}
-        style={[styles.button, styles.closeButton, !p.canClose && styles.dim, p.canClose && styles.closeReady]}
-      >
-        <Text style={styles.buttonText}>Close</Text>
-      </Pressable>
+      {/* Close only appears once the rack shows a closing hand: every tile connected, one to spare. */}
+      {p.canClose && (
+        <Pressable accessibilityRole="button" onPress={() => p.close()} style={[styles.button, styles.closeButton]}>
+          <Text style={styles.buttonText}>Close</Text>
+        </Pressable>
+      )}
       <View style={styles.jokerBox} accessibilityLabel={`Joker: ${round.joker.color} ${round.joker.number}`}>
         <Text style={styles.jokerLabel}>JOKER</Text>
         <Tile id={tileId(round.joker.color, round.joker.number)} width={wide ? 30 : 24} testID="joker-tile" />
@@ -141,6 +150,7 @@ export function Table({ onMenu, ...options }: Props) {
 
   const rack = (
     <Rack
+      ref={rackRef}
       layout={p.layout}
       joker={round.joker}
       aceHigh={game.settings.aceHigh}
@@ -150,6 +160,7 @@ export function Table({ onMenu, ...options }: Props) {
       onDrop={p.drop}
       onDropUp={p.dropUp}
       maxSlot={rackMaxSlot}
+      onResize={p.resize}
     />
   );
 
@@ -157,7 +168,7 @@ export function Table({ onMenu, ...options }: Props) {
     <View style={styles.screen}>
       {wide ? (
         <View style={[styles.wideContent, short && styles.wideShort]}>
-          <View style={styles.tableRow}>
+          <View style={[styles.tableRow, lifted && styles.lifted]}>
             <View style={styles.side}>
               {panel(2)}
               {panel(3)}
@@ -213,13 +224,11 @@ const styles = StyleSheet.create({
     borderWidth: 8,
     borderColor: colors.feltRim,
     padding: 8,
-    overflow: 'hidden',
   },
-  feltWide: { flex: 1 },
-  feltNarrow: { flex: 1, minHeight: 170 },
-  discard: { position: 'absolute' },
-  takeable: { borderRadius: 8, borderWidth: 3, borderColor: colors.accent },
-  feltHint: { position: 'absolute', bottom: 10, color: colors.textMuted, fontSize: 12 },
+  // Side by side on a wide table; wraps to two lines if the felt is too narrow for both.
+  feltWide: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', columnGap: 28, rowGap: 6, alignContent: 'center' },
+  feltNarrow: { flex: 1, minHeight: 190, gap: 12 },
+  lifted: { zIndex: 20, elevation: 20 },
   statusRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
   grow: { flex: 1, justifyContent: 'center' },
   statusPanel: {
@@ -237,8 +246,7 @@ const styles = StyleSheet.create({
   statusClose: { color: colors.accent },
   message: { color: colors.danger, fontSize: 12, textAlign: 'center' },
   button: { justifyContent: 'center', backgroundColor: colors.accent, paddingHorizontal: 14, borderRadius: 10 },
-  closeButton: { backgroundColor: colors.meld },
-  closeReady: { borderWidth: 3, borderColor: colors.text },
+  closeButton: { backgroundColor: colors.meld, borderWidth: 3, borderColor: colors.text },
   dim: { opacity: 0.35 },
   buttonText: { fontSize: 14, fontWeight: '800', color: '#2A2A2A' },
   jokerBox: {
