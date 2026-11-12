@@ -146,7 +146,7 @@ describe('practiceReducer', () => {
     const taken = practiceReducer(s, { type: 'takeDiscard', at: { slot: 1, side: 'left' } });
     expect(taken.layout[1]).toBe(offered);
     expect(taken.layout.slice(0, 3)).toEqual([t('K11'), offered, t('B11')]);
-    expect(taken.game.round.discards).not.toContain(offered);
+    expect(taken.game.round.discards.map((d) => d.tile)).not.toContain(offered);
 
     const top = s.game.round.middle[0]!;
     const drawn = practiceReducer(s, { type: 'drawMiddle', at: { slot: 22, side: 'right' } });
@@ -165,7 +165,8 @@ describe('practiceReducer', () => {
     // your turn: only Bot 3's tile is on offer, and the older ones still lie there
     const { round } = s.game;
     expect(round.current).toBe(0);
-    expect(round.discards.at(-1)).toBe(round.lastDiscard!.tile);
+    expect(round.discards.at(-1)).toEqual(round.lastDiscard);
+    expect(round.lastDiscard!.by).toBe(3);
     expect(round.discards.length).toBeGreaterThanOrEqual(2);
     s = practiceReducer(s, { type: 'drawMiddle' });
     expect(s.game.round.lastDiscard).toBeNull();

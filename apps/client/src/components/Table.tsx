@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import type { LayoutChangeEvent } from 'react-native';
 import { handOf, tileId } from '@gur/engine';
 import { DiscardRow } from './DiscardRow';
 import { MiddlePile } from './MiddlePile';
@@ -8,6 +9,7 @@ import { Rack } from './Rack';
 import type { RackHandle } from './Rack';
 import { ResultsOverlay } from './ResultsOverlay';
 import { Tile } from './Tile';
+import { feltLayout } from '@/game/feltLayout';
 import { PLAYER_NAMES, YOU, usePracticeGame } from '@/game/usePracticeGame';
 import type { PracticeOptions } from '@/game/usePracticeGame';
 import { colors } from '@/theme';
@@ -18,7 +20,8 @@ type Props = PracticeOptions & { onMenu: () => void };
  * The practice table: a felt table in the middle, players on both sides, your rack below.
  * Play runs counter-clockwise: you, the player on your right, the one across, the one on your left.
  *
- * The felt shows the middle and the last six discarded tiles. The newest discard and the top of
+ * The felt shows the middle and, beside each player, that player's last six discarded tiles.
+ * The newest discard and the top of
  * the middle can be tapped, or dragged onto the rack to land exactly where you want them.
  *
  * Buttons here are never given `disabled`: a button that disables itself in the middle of its
@@ -34,6 +37,7 @@ export function Table({ onMenu, ...options }: Props) {
   const wide = width >= 700 && width > height;
   // While a tile from the table is in the air, the table is lifted above the rack so it stays in view.
   const [lifted, setLifted] = useState(false);
+  const [feltSize, setFeltSize] = useState<{ width: number; height: number } | null>(null);
   const rackRef = useRef<RackHandle>(null);
   const { drawMiddle, takeDiscard } = p;
   // A tile let go over the rack lands on that slot; let go anywhere else, it goes back.
@@ -58,11 +62,14 @@ export function Table({ onMenu, ...options }: Props) {
             : 'Discard it, or tap a slot to move it there';
 
   const short = height < 560;
+  // A phone held sideways inside a browser: the address bar leaves only about 300 points of
+  // height, so everything around the rack is squeezed to the minimum.
+  const tight = wide && height < 360;
 
   // Sizes come from the screen: the rack gets about 45% of the height in landscape (two rows
   // of tiles 1.4 times as tall as wide, plus the planks), the felt shows smaller tiles.
   const rackMaxSlot = Math.max(24, Math.min(64, Math.floor((height * (wide ? 0.45 : 0.3) - 76) / 2.8) + 2));
-  const feltTile = wide ? Math.max(22, Math.min(44, Math.floor(height / 18))) : 24;
+  const feltTile = wide ? Math.max(tight ? 18 : 22, Math.min(44, Math.floor(height / 18))) : 24;
 
   const panel = (seat: number, compact = false) => (
     <PlayerPanel
@@ -73,45 +80,106 @@ export function Table({ onMenu, ...options }: Props) {
       you={seat === YOU}
       secondsLeft={seat === YOU ? p.secondsLeft : undefined}
       compact={compact}
-      small={wide && short}
+      small={wide && short && !tight}
+      tiny={tight}
     />
   );
 
+  // The felt's own size decides how big the discards are and how much of the pile is drawn.
+  // Until it has been measured, go by the screen. Its rim and padding come off each way.
+  const feltFrame = tight ? 16 : 32;
+  const feltW = (feltSize?.width ?? (wide ? Math.min(width, 1280) - 340 : width - 20)) - feltFrame;
+  const feltH = (feltSize?.height ?? (wide ? height * 0.4 : 330)) - feltFrame;
+  const sizes = feltLayout(feltW, feltH, feltTile, wide);
+
+  const pile = (
+    <MiddlePile
+      count={round.middle.length}
+      indicator={round.indicator}
+      canDraw={p.yourTurn && round.phase === 'draw'}
+      onDraw={drawMiddle}
+      onDropAt={dropOnRack.middle}
+      onDragChange={setLifted}
+      tileWidth={feltTile}
+      maxStacks={sizes.stacks}
+      dense={tight}
+    />
+  );
+
+  const discards = (seat: number) => (
+    <DiscardRow
+      key={seat}
+      name={PLAYER_NAMES[seat]!}
+      you={seat === YOU}
+      discards={round.discards.filter((d) => d.by === seat).map((d) => d.tile)}
+      last={round.lastDiscard?.by === seat ? round.lastDiscard.tile : null}
+      takeable={p.lastDiscardTakeable}
+      joker={round.joker}
+      tileWidth={sizes.discardTile}
+      compact={sizes.arrangement === 'grid'}
+      onTake={takeDiscard}
+      onDropAt={dropOnRack.discard}
+      onDragChange={setLifted}
+    />
+  );
+
+  // Each player's discards lie in the corner of the felt nearest to them: across and right on
+  // top, left and you at the bottom. The tile you may take is always in the row on your left.
   const felt = (
     <View
-      style={[styles.felt, wide ? styles.feltWide : styles.feltNarrow, !wide && lifted && styles.lifted]}
+      style={[
+        styles.felt,
+        wide ? styles.feltWide : styles.feltNarrow,
+        tight && styles.feltTight,
+        !wide && lifted && styles.lifted,
+      ]}
       testID="felt"
+      onLayout={(e: LayoutChangeEvent) => {
+        const { width: w, height: h } = e.nativeEvent.layout;
+        setFeltSize((old) => (old && old.width === w && old.height === h ? old : { width: w, height: h }));
+      }}
     >
-      <MiddlePile
-        count={round.middle.length}
-        indicator={round.indicator}
-        canDraw={p.yourTurn && round.phase === 'draw'}
-        onDraw={drawMiddle}
-        onDropAt={dropOnRack.middle}
-        onDragChange={setLifted}
-        tileWidth={feltTile}
-      />
-      <DiscardRow
-        discards={round.discards}
-        last={round.lastDiscard?.tile ?? null}
-        takeable={p.lastDiscardTakeable}
-        joker={round.joker}
-        tileWidth={feltTile + 4}
-        onTake={takeDiscard}
-        onDropAt={dropOnRack.discard}
-        onDragChange={setLifted}
-      />
+      {sizes.arrangement === 'sides' ? (
+        <>
+          <View style={styles.feltColumn}>
+            {discards(2)}
+            {discards(3)}
+          </View>
+          {pile}
+          <View style={styles.feltColumn}>
+            {discards(1)}
+            {discards(YOU)}
+          </View>
+        </>
+      ) : (
+        <>
+          <View style={sizes.arrangement === 'grid' ? styles.feltLine : styles.feltStack}>
+            {discards(2)}
+            {discards(1)}
+          </View>
+          {pile}
+          <View style={sizes.arrangement === 'grid' ? styles.feltLine : styles.feltStack}>
+            {discards(3)}
+            {discards(YOU)}
+          </View>
+        </>
+      )}
     </View>
   );
 
   const statusPanel = (
-    <View style={styles.statusPanel}>
-      {p.log && (
+    <View style={[styles.statusPanel, tight && styles.statusPanelTight]}>
+      {p.log && !tight && (
         <Text style={styles.log} numberOfLines={2} testID="log">
           {p.log}
         </Text>
       )}
-      <Text style={[styles.status, p.canClose && styles.statusClose]} testID="status" accessibilityLiveRegion="polite">
+      <Text
+        style={[styles.status, tight && styles.statusTight, p.canClose && styles.statusClose]}
+        numberOfLines={tight ? 1 : undefined}
+        testID="status"
+        accessibilityLiveRegion="polite"
+      >
         {status}
       </Text>
       {p.message && (
@@ -138,9 +206,16 @@ export function Table({ onMenu, ...options }: Props) {
           <Text style={styles.buttonText}>Close</Text>
         </Pressable>
       )}
-      <View style={styles.jokerBox} accessibilityLabel={`Joker: ${round.joker.color} ${round.joker.number}`}>
+      <View
+        style={[styles.jokerBox, tight && styles.jokerBoxTight]}
+        accessibilityLabel={`Joker: ${round.joker.color} ${round.joker.number}`}
+      >
         <Text style={styles.jokerLabel}>JOKER</Text>
-        <Tile id={tileId(round.joker.color, round.joker.number)} width={wide ? 30 : 24} testID="joker-tile" />
+        <Tile
+          id={tileId(round.joker.color, round.joker.number)}
+          width={tight ? 18 : wide ? 30 : 24}
+          testID="joker-tile"
+        />
         <Text style={styles.hidden} testID="joker">
           {round.joker.color} {round.joker.number}
         </Text>
@@ -167,7 +242,7 @@ export function Table({ onMenu, ...options }: Props) {
   return (
     <View style={styles.screen}>
       {wide ? (
-        <View style={[styles.wideContent, short && styles.wideShort]}>
+        <View style={[styles.wideContent, short && styles.wideShort, tight && styles.wideTight]}>
           <View style={[styles.tableRow, lifted && styles.lifted]}>
             <View style={styles.side}>
               {panel(2)}
@@ -211,6 +286,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.backdrop },
   wideContent: { flex: 1, padding: 16, gap: 12, width: '100%', maxWidth: 1280, alignSelf: 'center' },
   wideShort: { padding: 8, gap: 6 },
+  wideTight: { padding: 6, gap: 5 },
   narrowContent: { flex: 1, padding: 10, gap: 10 },
   tableRow: { flex: 1, flexDirection: 'row', gap: 10, minHeight: 0 },
   side: { justifyContent: 'space-between', gap: 8 },
@@ -225,9 +301,14 @@ const styles = StyleSheet.create({
     borderColor: colors.feltRim,
     padding: 8,
   },
-  // Side by side on a wide table; wraps to two lines if the felt is too narrow for both.
-  feltWide: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', columnGap: 28, rowGap: 6, alignContent: 'center' },
-  feltNarrow: { flex: 1, minHeight: 190, gap: 12 },
+  feltWide: { flex: 1, flexDirection: 'row', justifyContent: 'space-between' },
+  feltNarrow: { flex: 1, minHeight: 200, justifyContent: 'space-between' },
+  // Wide: a column of two discard rows on each side of the pile, one in each corner.
+  feltColumn: { alignSelf: 'stretch', justifyContent: 'space-between', gap: 6 },
+  // Upright: two rows on a line, or one under the other, above and below the pile.
+  feltLine: { alignSelf: 'stretch', flexDirection: 'row', justifyContent: 'space-between', gap: 6 },
+  feltStack: { alignItems: 'center', gap: 6 },
+  feltTight: { borderWidth: 4, padding: 4, borderRadius: 14 },
   lifted: { zIndex: 20, elevation: 20 },
   statusRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
   grow: { flex: 1, justifyContent: 'center' },
@@ -241,6 +322,8 @@ const styles = StyleSheet.create({
     borderColor: colors.panelEdge,
     gap: 2,
   },
+  statusPanelTight: { paddingVertical: 3 },
+  statusTight: { fontSize: 12 },
   log: { color: colors.textMuted, fontSize: 12, textAlign: 'center' },
   status: { color: colors.text, fontSize: 14, fontWeight: '600', textAlign: 'center' },
   statusClose: { color: colors.accent },
@@ -258,6 +341,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: colors.jokerBox,
   },
+  jokerBoxTight: { flexDirection: 'row', gap: 6, paddingVertical: 2 },
   jokerLabel: { color: colors.text, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   hidden: { position: 'absolute', width: 1, height: 1, opacity: 0 },
 });

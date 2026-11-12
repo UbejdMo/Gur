@@ -14,24 +14,38 @@ type Props = {
   onDragChange?: (dragging: boolean) => void;
   /** Width of one tile in the row. */
   tileWidth: number;
+  /** The most face-down stacks there is room for. */
+  maxStacks?: number;
+  /** Less padding, for very short screens. */
+  dense?: boolean;
 };
 
 /**
  * The middle: a row of face-down stacks with the indicator turned face up at the end.
  * Tap it to draw when it's your turn, or drag the tile next to the indicator onto your rack.
  */
-export function MiddlePile({ count, indicator, canDraw, onDraw, onDropAt, onDragChange, tileWidth }: Props) {
-  const stacks = Math.max(1, Math.min(8, Math.ceil(count / 6)));
+export function MiddlePile({
+  count,
+  indicator,
+  canDraw,
+  onDraw,
+  onDropAt,
+  onDragChange,
+  tileWidth,
+  maxStacks = 8,
+  dense = false,
+}: Props) {
+  const stacks = Math.max(1, Math.min(maxStacks, Math.ceil(count / 6)));
   const h = Math.round(tileWidth * 1.4);
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, dense && styles.wrapDense]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Draw from the middle, ${count} tiles left`}
         accessibilityState={{ disabled: !canDraw }}
         testID="draw-middle"
         onPress={() => canDraw && onDraw()}
-        style={[styles.row, canDraw && styles.active]}
+        style={[styles.row, dense && styles.rowDense, canDraw && styles.active]}
       >
         {Array.from({ length: stacks }, (_, i) => {
           const stack = (
@@ -54,7 +68,7 @@ export function MiddlePile({ count, indicator, canDraw, onDraw, onDropAt, onDrag
           <Tile id={indicator} width={tileWidth} testID="indicator" />
         </View>
       </Pressable>
-      <Text style={styles.count}>
+      <Text style={[styles.count, dense && styles.countDense]}>
         <Text testID="middle-count">{count}</Text> tiles in the middle
       </Text>
     </View>
@@ -63,6 +77,9 @@ export function MiddlePile({ count, indicator, canDraw, onDraw, onDropAt, onDrag
 
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center', gap: 8 },
+  wrapDense: { gap: 1 },
+  rowDense: { padding: 3 },
+  countDense: { fontSize: 10 },
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',

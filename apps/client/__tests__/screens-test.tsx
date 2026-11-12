@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import Home from '@/app/index';
 import { Table } from '@/components/Table';
 import { DiscardRow } from '@/components/DiscardRow';
@@ -35,7 +35,10 @@ describe('Table', () => {
     expect(screen.getAllByTestId('rack-tile')).toHaveLength(15);
     expect(screen.getAllByTestId('rack-row')).toHaveLength(2);
     expect(screen.getByTestId('middle-count')).toHaveTextContent('48');
-    expect(screen.getByTestId('discards')).toHaveTextContent(/none yet/);
+    // one row of discards for each player, all empty at the start
+    expect(screen.getAllByTestId('discards')).toHaveLength(4);
+    expect(screen.getByLabelText('Discarded by Bot 3')).toBeOnTheScreen();
+    expect(screen.queryByTestId('last-discard')).toBeNull();
   });
 
   it('offers Close as soon as the rack shows a closing hand', async () => {
@@ -57,11 +60,13 @@ describe('Table', () => {
     expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
   });
 
-  it('keeps a discarded tile on the table', async () => {
+  it('keeps a discarded tile on the table, in the row of the player who discarded it', async () => {
     await renderTable(practiceGame({ you: ALMOST }));
     await fireEvent.press(screen.getAllByRole('button', { name: 'red 9' })[0]!);
     await fireEvent.press(screen.getByRole('button', { name: 'Discard' }));
-    expect(screen.getByTestId('last-discard')).toHaveProp('accessibilityLabel', 'red 9');
+    const yours = within(screen.getByLabelText('Discarded by you'));
+    expect(yours.getByTestId('last-discard')).toHaveProp('accessibilityLabel', 'red 9');
+    expect(within(screen.getByLabelText('Discarded by Bot 1')).queryByTestId('last-discard')).toBeNull();
   });
 
   it('closes a hand and shows the results', async () => {
@@ -96,12 +101,13 @@ describe('Table', () => {
 
 describe('DiscardRow', () => {
   const joker = { color: 'red', number: 13 } as const;
-  const props = { joker, tileWidth: 30, onDropAt: jest.fn() };
+  const props = { name: 'Bot 3', joker, tileWidth: 30, onDropAt: jest.fn() };
 
-  it('shows the latest six discards; only the newest can be taken, and only on your turn to draw', async () => {
+  it("shows a player's latest six discards; only the newest can be taken, and only on your turn to draw", async () => {
     const onTake = jest.fn();
     const discards = ts('B1 B2 B3 B4 B5 B6 B7 B8');
     await render(<DiscardRow {...props} discards={discards} last={t('B8')} takeable onTake={onTake} />);
+    expect(screen.getByLabelText('Discarded by Bot 3')).toBeOnTheScreen();
     expect(screen.getAllByTestId('gone-discard')).toHaveLength(5);
     expect(screen.queryByLabelText('blue 2')).toBeNull();
     expect(screen.getByLabelText('blue 3')).toBeOnTheScreen();
