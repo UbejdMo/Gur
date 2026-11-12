@@ -5,9 +5,10 @@
  * Seats are numbered in counter-clockwise order, so the next player is seat + 1.
  * The server owns the clock: it calls timeoutMove() when turnSeconds() runs out.
  */
-import { TILE_COUNT, TILES, getTile, isRealJoker, jokerFromIndicator, tileValue } from './tiles';
+import { TILE_COUNT, TILES, getTile, isRealJoker, jokerFromIndicator } from './tiles';
 import type { Joker, TileId } from './tiles';
-import { checkClosingHand, identicalPairCount, penalty, unconnectedTiles } from './hand';
+import { HandAnalysis, bestPenalty } from './arrange';
+import { arrangedClosingHand, checkClosingHand, identicalPairCount } from './hand';
 import type { ClosingHand } from './hand';
 
 export class RuleError extends Error {
@@ -28,7 +29,7 @@ export interface Settings {
 
 export interface Player {
   id: string;
-  /** The rack as the player arranged it. Only groups that are valid melds count as connected. */
+  /** The rack as the player arranged it. It decides whether they can close; points use their best arrangement. */
   groups: TileId[][];
   /** Running total across rounds; lowest wins. */
   total: number;
@@ -47,10 +48,16 @@ export interface Round {
   indicator: TileId;
   joker: Joker;
   middle: TileId[];
-  /** All discarded tiles, oldest first. Only the last can be taken, and only by the next player. */
+  /**
+   * Discarded tiles still on the table, oldest first (a tile that is picked up leaves the list).
+   * Only the last can be taken, only by the next player, and only on that turn: see lastDiscard.
+   */
   discards: TileId[];
+  /** The discard the current player may take instead of drawing; null once they have drawn. */
   lastDiscard: { tile: TileId; by: number } | null;
   current: number;
+  /** Counts turns in this round, starting at 0. It goes up each time a player discards. */
+  turn: number;
   phase: 'draw' | 'discard';
   firstDiscardDone: boolean;
   /** Seats offered a restart because they were dealt 3 or more identical pairs. */
@@ -182,6 +189,7 @@ function applyDeal(game: Game, roundNumber: number, starter: number, deal: Deal)
     discards: [],
     lastDiscard: null,
     current: starter,
+    turn: 0,
     phase: 'discard',
     firstDiscardDone: false,
     restartOffers,
@@ -274,20 +282,35 @@ export function discard(game: Game, seat: number, tile: TileId): Game {
     finishRound(g, stockOutResult(g));
   } else {
     r.current = nextSeat(g, seat);
+    r.turn += 1;
     r.phase = 'draw';
   }
   return g;
 }
 
-/** Close by discarding the 15th tile. The other 14 must form a closing hand. */
+/**
+ * Close by discarding the 15th tile. The other 14 must form a closing hand as they
+ * are arranged on the rack: tiles that could be melds but aren't laid out as melds
+ * don't close.
+ */
 export function close(game: Game, seat: number, tile: TileId): Game {
   assertTurn(game, seat, 'discard');
   const hand = handOf(game.players[seat]!);
   if (!hand.includes(tile)) throw new RuleError('That tile is not in your hand');
   const r0 = game.round;
   const rest = hand.filter((t) => t !== tile);
-  const closingHand = checkClosingHand(rest, r0.joker, game.settings.aceHigh);
-  if (!closingHand) throw new RuleError('Those tiles are not a closing hand');
+  // Taking the tile off the rack leaves a gap: the tiles on either side of it are separate groups.
+  const arranged = game.players[seat]!.groups.flatMap((gr) =>
+    gr.includes(tile) ? [gr.slice(0, gr.indexOf(tile)), gr.slice(gr.indexOf(tile) + 1)] : [gr],
+  ).filter((gr) => gr.length > 0);
+  const closingHand = arrangedClosingHand(arranged, r0.joker, game.settings.aceHigh);
+  if (!closingHand) {
+    throw new RuleError(
+      checkClosingHand(rest, r0.joker, game.settings.aceHigh)
+        ? 'Connect your tiles into melds on the rack before closing'
+        : 'Those tiles are not a closing hand',
+    );
+  }
 
   const g = clone(game);
   const r = g.round;
@@ -297,7 +320,7 @@ export function close(game: Game, seat: number, tile: TileId): Game {
       ? double
         ? DOUBLE_CLOSE_SCORE
         : CLOSE_SCORE
-      : penalty(p.groups, r.joker, g.settings.aceHigh) * (double ? 2 : 1),
+      : bestPenalty(handOf(p), r.joker, g.settings.aceHigh) * (double ? 2 : 1),
   );
   const winner = g.players[seat]!;
   winner.groups = closingHand.kind === 'melds' ? closingHand.groups.map((x) => [...x]) : [rest];
@@ -317,8 +340,9 @@ export function close(game: Game, seat: number, tile: TileId): Game {
 
 /**
  * The automatic move when a turn's time runs out: draw from the middle if the
- * player hasn't drawn, then discard their highest unconnected tile. Real jokers
- * are kept unless nothing else is left. It never closes.
+ * player hasn't drawn, then discard the tile that leaves them the fewest points
+ * (their highest tile outside the best melds). Real jokers are kept unless
+ * nothing else is left. It never closes.
  */
 export function timeoutMove(game: Game): Game {
   assertPlaying(game);
@@ -331,13 +355,7 @@ export function timeoutMove(game: Game): Game {
 }
 
 export function autoDiscardTile(game: Game, seat: number): TileId {
-  const { joker } = game.round;
-  const p = game.players[seat]!;
-  const notWild = (t: TileId) => !isRealJoker(t, joker);
-  const unconnected = unconnectedTiles(p.groups, joker, game.settings.aceHigh).filter(notWild);
-  const pool = unconnected.length > 0 ? unconnected : handOf(p).filter(notWild);
-  const candidates = pool.length > 0 ? pool : handOf(p);
-  return candidates.reduce((best, t) => (tileValue(t, joker) > tileValue(best, joker) ? t : best));
+  return new HandAnalysis(handOf(game.players[seat]!), game.round.joker, game.settings.aceHigh).bestDiscard();
 }
 
 /** Seconds allowed for the current turn: 15 for every turn, including the first. */
@@ -361,7 +379,7 @@ export function nextRoundWithDeal(game: Game, deal: Deal): Game {
 
 function stockOutResult(game: Game): RoundResult {
   const { joker } = game.round;
-  const scores = game.players.map((p) => penalty(p.groups, joker, game.settings.aceHigh));
+  const scores = game.players.map((p) => bestPenalty(handOf(p), joker, game.settings.aceHigh));
   const best = Math.min(...scores);
   return {
     round: game.round.number,

@@ -1,8 +1,8 @@
 import {
   RuleError,
   arrange,
+  arrangedClosingHand,
   botTurn,
-  checkClosingHand,
   close,
   describeTile,
   discard,
@@ -14,8 +14,8 @@ import {
   timeoutMove,
 } from '@gur/engine';
 import type { Game, TileId } from '@gur/engine';
-import { initialLayout, layoutGroups, moveToSlot, reconcile, sameGroups } from './rackLayout';
-import type { Layout } from './rackLayout';
+import { colsOf, initialLayout, layoutGroups, placeTile, reconcile, resizeLayout, sameGroups } from './rackLayout';
+import type { Layout, Side } from './rackLayout';
 
 export const YOU = 0;
 
@@ -32,37 +32,47 @@ export type PracticeState = {
 export type PracticeAction =
   | { type: 'select'; tile: TileId }
   | { type: 'moveSelected'; slot: number }
-  | { type: 'drop'; tile: TileId; slot: number }
+  | { type: 'drop'; tile: TileId; slot: number; side?: Side }
   | { type: 'dropUp'; tile: TileId }
-  | { type: 'drawMiddle' }
-  | { type: 'takeDiscard' }
+  | { type: 'drawMiddle'; at?: Place }
+  | { type: 'takeDiscard'; at?: Place }
+  | { type: 'resize'; cols: number }
   | { type: 'discard'; tile?: TileId }
   | { type: 'close'; tile?: TileId }
   | { type: 'bot' }
   | { type: 'timeout' }
   | { type: 'newGame'; game: Game };
 
-export function initialState(game: Game): PracticeState {
+/** A place on the rack: a slot, and which half of it was aimed at when a tile is already there. */
+export type Place = { slot: number; side: Side };
+
+export function initialState(game: Game, cols?: number): PracticeState {
   return withRack(
     { game, layout: [], selected: null, message: null, log: null },
-    initialLayout(handOf(game.players[YOU]!)),
+    initialLayout(handOf(game.players[YOU]!), cols),
   );
 }
 
-/** Tiles you could discard right now to close, real jokers first (closing with one is a double). */
+/**
+ * Tiles you could discard right now to close, real jokers first (closing with one is a double).
+ * The rack decides: taking the tile off must leave every group on it a meld (or seven pairs, or a mosaic).
+ */
 export function closingTiles(game: Game): TileId[] {
   const { round } = game;
   if (game.status !== 'playing' || round.current !== YOU || round.phase !== 'discard') return [];
-  const hand = handOf(game.players[YOU]!);
+  const { groups } = game.players[YOU]!;
+  const hand = groups.flat();
   if (hand.length !== 15) return [];
   return hand
-    .filter((t) =>
-      checkClosingHand(
-        hand.filter((x) => x !== t),
+    .filter((t) => {
+      // Taking a tile out of the middle of a group leaves a gap, which splits the group in two.
+      const rest = groups.flatMap((g) => (g.includes(t) ? [g.slice(0, g.indexOf(t)), g.slice(g.indexOf(t) + 1)] : [g]));
+      return arrangedClosingHand(
+        rest.filter((g) => g.length > 0),
         round.joker,
         game.settings.aceHigh,
-      ),
-    )
+      );
+    })
     .sort((a, b) => Number(isRealJoker(b, round.joker)) - Number(isRealJoker(a, round.joker)));
 }
 
@@ -100,9 +110,16 @@ function withRack(state: PracticeState, layout: Layout = state.layout): Practice
 }
 
 /** Applies an engine action; a rule error becomes a message and nothing changes. */
-function play(state: PracticeState, fn: (g: Game) => Game, log: string): PracticeState {
+function play(state: PracticeState, fn: (g: Game) => Game, log: string, at?: Place): PracticeState {
   try {
-    return withRack({ ...state, game: fn(state.game), selected: null, message: null, log });
+    const game = fn(state.game);
+    // A tile drawn by dragging it onto the rack goes where it was dropped.
+    const drawn = at && handOf(game.players[YOU]!).find((t) => !state.layout.includes(t));
+    const layout =
+      at && drawn !== undefined && at.slot < state.layout.length
+        ? placeTile(state.layout, drawn, at.slot, at.side)
+        : state.layout;
+    return withRack({ ...state, game, selected: null, message: null, log }, layout);
   } catch (e) {
     if (e instanceof RuleError) return { ...state, message: e.message };
     throw e;
@@ -127,12 +144,14 @@ export function practiceReducer(state: PracticeState, action: PracticeAction): P
       return { ...state, selected: state.selected === action.tile ? null : action.tile };
     case 'moveSelected':
       if (state.selected === null) return state;
-      return { ...withRack(state, moveToSlot(state.layout, state.selected, action.slot)), selected: null };
+      return { ...withRack(state, placeTile(state.layout, state.selected, action.slot)), selected: null };
     case 'drop':
       if (!state.layout.includes(action.tile)) return state;
-      return { ...withRack(state, moveToSlot(state.layout, action.tile, action.slot)), selected: null };
+      return { ...withRack(state, placeTile(state.layout, action.tile, action.slot, action.side)), selected: null };
+    case 'resize':
+      return withRack(state, resizeLayout(state.layout, action.cols));
     case 'dropUp':
-      // Dragging a tile up off the rack plays it: if the rest is a closing hand you close,
+      // Dragging a tile up off the rack plays it: if the rest of the rack is a closing hand you close,
       // which is how a close is declared ("the 15th tile is removed"). Otherwise it is a discard.
       if (game.status !== 'playing' || game.round.current !== YOU || game.round.phase !== 'discard') return state;
       if (closingTiles(game).includes(action.tile)) {
@@ -140,16 +159,16 @@ export function practiceReducer(state: PracticeState, action: PracticeAction): P
       }
       return play(state, (g) => discard(g, YOU, action.tile), `You discarded ${describeTile(action.tile)}`);
     case 'drawMiddle':
-      return play(state, (g) => draw(g, YOU, 'middle'), 'You drew from the middle');
+      return play(state, (g) => draw(g, YOU, 'middle'), 'You drew from the middle', action.at);
     case 'takeDiscard':
-      return play(state, (g) => draw(g, YOU, 'discard'), 'You picked up the last discarded tile');
+      return play(state, (g) => draw(g, YOU, 'discard'), 'You picked up the last discarded tile', action.at);
     case 'discard': {
       const tile = action.tile ?? state.selected;
       return tile === null ? state : play(state, (g) => discard(g, YOU, tile), `You discarded ${describeTile(tile)}`);
     }
     case 'close': {
       const tile = action.tile ?? chooseClosingTile(state);
-      if (tile === null) return { ...state, message: 'Your tiles are not a closing hand yet' };
+      if (tile === null) return { ...state, message: 'Connect all your tiles into melds on the rack to close' };
       return play(state, (g) => close(g, YOU, tile), 'You closed');
     }
     case 'bot': {
@@ -166,6 +185,6 @@ export function practiceReducer(state: PracticeState, action: PracticeAction): P
         log: 'Time ran out: a tile was played for you',
       });
     case 'newGame':
-      return initialState(action.game);
+      return initialState(action.game, colsOf(state.layout));
   }
 }

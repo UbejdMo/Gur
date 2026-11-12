@@ -16,6 +16,11 @@ export function t(code: string): TileId {
 export const ts = (codes: string) => codes.trim().split(/\s+/).map(t);
 
 export const NORMAL = 'K11 B11 R11 Y11 Y7 Y8 Y9 Y10 R3 R4 R5 K3 B3 R3b';
+/**
+ * A closing hand that is already laid out as dealt: the rack deals 7 tiles to each row,
+ * so each row is a run of seven. NORMAL could close too, but only after it is arranged.
+ */
+export const READY = 'R1 R2 R3 R4 R5 R6 R7 K1 K2 K3 K4 K5 K6 K7';
 /** Like NORMAL but one tile short of a closing hand (blue 9 instead of the third 3). */
 export const ALMOST = 'K11 B11 R11 Y11 Y7 Y8 Y9 Y10 R3 R4 R5 K3 B3 B9';
 export const FILLER = [

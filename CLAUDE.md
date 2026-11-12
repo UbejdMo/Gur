@@ -29,7 +29,9 @@ Run from the repo root. Node 22 and pnpm 9 (via `corepack enable`).
 - Key rules that are easy to get wrong:
   - The joker is the indicator's number + 1 in the same colour (13 → 1). Both real copies are wild. The printed joker is not wild: it counts as the joker number.
   - Scoring: the winner gets -10, or -20 when closing by discarding a real joker (a "double"), which also doubles everyone else's points. Special closing hands score the same as a normal close.
-  - Losers count unconnected tiles exactly as they arranged them. Never rearrange a person's hand for them (bots arrange their own). The app shows a two-row rack (12 slots a row, dealt 7 on top and 7 below); tiles side by side form a group, and the engine's arrangement always mirrors the rack.
+  - Points and closing treat the rack differently. For points, a loser always counts their best possible hand (the fewest unconnected points), however the rack is arranged. For closing, the rack decides: every group on it must be a meld once the 15th tile is taken off (seven pairs and mosaic count however they are placed). The app only offers Close when the rack shows that.
+  - Discarded tiles stay on the table and the app shows the latest six. Only the newest can be taken, only by the next player, and only on that turn; after that it is gone for good.
+  - The app shows a two-row rack as wide as the screen (12 or more slots a row, dealt 7 on top and 7 below); tiles side by side form a group, and the engine's arrangement always mirrors the rack. A tile dropped on another slides in beside it; tiles never swap.
   - 12-13-1 is a table option; 13-1-2 is never valid.
 - The server is authoritative: clients send intentions, the server validates them with `@gur/engine`. Never trust a client's game state.
 - Engine functions are pure: they return a new state and never mutate their input. Illegal moves throw `RuleError`.

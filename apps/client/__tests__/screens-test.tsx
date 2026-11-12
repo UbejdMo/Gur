@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import Home from '@/app/index';
 import { Table } from '@/components/Table';
-import { ALMOST, practiceGame } from '../test-utils/deal';
+import { DiscardRow } from '@/components/DiscardRow';
+import { ALMOST, READY, practiceGame, t, ts } from '../test-utils/deal';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), replace: jest.fn() } }));
 
@@ -13,6 +14,14 @@ describe('Home', () => {
     await fireEvent(screen.getByLabelText('Allow 12-13-1'), 'valueChange', false);
     await fireEvent.press(screen.getByRole('button', { name: 'Play against bots' }));
     expect(router.push).toHaveBeenCalledWith('/play?aceHigh=0');
+  });
+
+  it('lets you make the bots play fast', async () => {
+    const { router } = jest.requireMock('expo-router') as { router: { push: jest.Mock } };
+    await render(<Home />);
+    await fireEvent(screen.getByLabelText('Bots take their time'), 'valueChange', false);
+    await fireEvent.press(screen.getByRole('button', { name: 'Play against bots' }));
+    expect(router.push).toHaveBeenLastCalledWith('/play?aceHigh=1&bots=fast');
   });
 });
 
@@ -26,19 +35,37 @@ describe('Table', () => {
     expect(screen.getAllByTestId('rack-tile')).toHaveLength(15);
     expect(screen.getAllByTestId('rack-row')).toHaveLength(2);
     expect(screen.getByTestId('middle-count')).toHaveTextContent('48');
-    expect(screen.getByTestId('status')).toHaveTextContent('You can close! Drag your extra tile up, or press Close');
+    expect(screen.getByTestId('discards')).toHaveTextContent(/none yet/);
   });
 
-  it('tells you to discard when the hand is not complete, and keeps Close off', async () => {
+  it('offers Close as soon as the rack shows a closing hand', async () => {
+    await renderTable(practiceGame({ you: READY }));
+    expect(screen.getByTestId('status')).toHaveTextContent('You can close! Drag your extra tile up, or press Close');
+    expect(screen.getByRole('button', { name: 'Close' })).toBeOnTheScreen();
+  });
+
+  it('hides Close while tiles that could close are not connected on the rack', async () => {
+    // the default hand is a closing hand, but as dealt it is not laid out as melds
+    await renderTable();
+    expect(screen.getByTestId('status')).toHaveTextContent('Drag a tile up off your rack to discard it');
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+  });
+
+  it('tells you to discard when the hand is not complete, and shows no Close button', async () => {
     await renderTable(practiceGame({ you: ALMOST }));
     expect(screen.getByTestId('status')).toHaveTextContent('Drag a tile up off your rack to discard it');
-    expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled();
-    await fireEvent.press(screen.getByRole('button', { name: 'Close' }));
-    expect(screen.queryByTestId('results')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+  });
+
+  it('keeps a discarded tile on the table', async () => {
+    await renderTable(practiceGame({ you: ALMOST }));
+    await fireEvent.press(screen.getAllByRole('button', { name: 'red 9' })[0]!);
+    await fireEvent.press(screen.getByRole('button', { name: 'Discard' }));
+    expect(screen.getByTestId('last-discard')).toHaveProp('accessibilityLabel', 'red 9');
   });
 
   it('closes a hand and shows the results', async () => {
-    await renderTable(practiceGame({ middleTop: ['Y4b'] }));
+    await renderTable(practiceGame({ you: READY, middleTop: ['Y4b'] }));
     await fireEvent.press(screen.getByRole('button', { name: 'yellow 4' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Close' }));
     expect(screen.getByTestId('results')).toBeOnTheScreen();
@@ -64,5 +91,35 @@ describe('Table', () => {
     await fireEvent.press(tile('yellow 9'));
     await fireEvent.press(screen.getByRole('button', { name: 'Empty slot 23' }));
     expect(screen.getAllByTestId('rack-meld')).toHaveLength(2);
+  });
+});
+
+describe('DiscardRow', () => {
+  const joker = { color: 'red', number: 13 } as const;
+  const props = { joker, tileWidth: 30, onDropAt: jest.fn() };
+
+  it('shows the latest six discards; only the newest can be taken, and only on your turn to draw', async () => {
+    const onTake = jest.fn();
+    const discards = ts('B1 B2 B3 B4 B5 B6 B7 B8');
+    await render(<DiscardRow {...props} discards={discards} last={t('B8')} takeable onTake={onTake} />);
+    expect(screen.getAllByTestId('gone-discard')).toHaveLength(5);
+    expect(screen.queryByLabelText('blue 2')).toBeNull();
+    expect(screen.getByLabelText('blue 3')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('last-discard'));
+    expect(onTake).toHaveBeenCalledTimes(1);
+  });
+
+  it('once the next player has drawn, every tile there is gone for good', async () => {
+    const onTake = jest.fn();
+    await render(<DiscardRow {...props} discards={ts('B1 B2 B3')} last={null} takeable={false} onTake={onTake} />);
+    expect(screen.getAllByTestId('gone-discard')).toHaveLength(3);
+    expect(screen.queryByTestId('last-discard')).toBeNull();
+  });
+
+  it('a discard left for another player cannot be taken by you', async () => {
+    const onTake = jest.fn();
+    await render(<DiscardRow {...props} discards={ts('B1 B2')} last={t('B2')} takeable={false} onTake={onTake} />);
+    await fireEvent.press(screen.getByTestId('last-discard'));
+    expect(onTake).not.toHaveBeenCalled();
   });
 });

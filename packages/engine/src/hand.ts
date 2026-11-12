@@ -1,13 +1,14 @@
 /**
  * Closing hands and unconnected tiles.
  *
- * A player closes by discarding their 15th tile; the other 14 must be one of:
+ * A player closes by discarding their 15th tile; the other 14 must be one of the
+ * hands below, and the melds must be laid out on the rack (arrangedClosingHand):
  * - melds: any split into melds of 3 or more (covers Normal, Bicolor, Minors,
  *   Majors, Monocolor and Eight of a kind, which all score the same)
  * - seven pairs: 7 pairs of identical tiles
  * - mosaic: one run 1..13 then 1 in mixed colours (needs 12-13-1 on)
  */
-import { COLORS, faceOf, physicalKey, tileValue } from './tiles';
+import { COLORS, faceOf, physicalKey } from './tiles';
 import type { Color, Face, Joker, TileId } from './tiles';
 import { isMeld } from './melds';
 
@@ -140,7 +141,7 @@ export function isMosaic(ids: readonly TileId[], joker: Joker, aceHigh: boolean)
   return false;
 }
 
-/** Checks the 14 tiles left after the closing discard. */
+/** Whether 14 tiles could be a closing hand at all, in any arrangement. */
 export function checkClosingHand(ids: readonly TileId[], joker: Joker, aceHigh: boolean): ClosingHand | null {
   if (ids.length !== 14) return null;
   const groups = findMeldPartition(ids, joker, aceHigh);
@@ -151,8 +152,29 @@ export function checkClosingHand(ids: readonly TileId[], joker: Joker, aceHigh: 
 }
 
 /**
- * Tiles not in a valid meld, as the player arranged them.
- * The app never rearranges a hand, so a badly arranged hand costs points.
+ * The closing hand a rack shows, as the player arranged it. Closing is the one
+ * place where the arrangement matters: every group on the rack must be a meld.
+ * Seven pairs and mosaic are not melds, so they count however they are placed.
+ */
+export function arrangedClosingHand(
+  groups: readonly (readonly TileId[])[],
+  joker: Joker,
+  aceHigh: boolean,
+): ClosingHand | null {
+  const ids = groups.flat();
+  if (ids.length !== 14) return null;
+  if (unconnectedTiles(groups, joker, aceHigh).length === 0) {
+    return { kind: 'melds', groups: groups.map((g) => [...g]) };
+  }
+  if (isSevenPairs(ids, joker)) return { kind: 'sevenPairs' };
+  if (isMosaic(ids, joker, aceHigh)) return { kind: 'mosaic' };
+  return null;
+}
+
+/**
+ * Tiles not in a valid meld, as the rack is arranged right now. This is what the
+ * rack shows as connected and what a close needs; points are counted from the
+ * best possible arrangement instead (see arrange.ts).
  */
 export function unconnectedTiles(groups: readonly (readonly TileId[])[], joker: Joker, aceHigh: boolean): TileId[] {
   const out: TileId[] = [];
@@ -166,10 +188,6 @@ export function unconnectedTiles(groups: readonly (readonly TileId[])[], joker: 
       out.push(...g);
   }
   return out;
-}
-
-export function penalty(groups: readonly (readonly TileId[])[], joker: Joker, aceHigh: boolean): number {
-  return unconnectedTiles(groups, joker, aceHigh).reduce((sum, id) => sum + tileValue(id, joker), 0);
 }
 
 /** Number of identical pairs in a hand (two copies of the same tile). 3 or more triggers the restart offer. */
