@@ -136,10 +136,11 @@ test('discards stay on the table, and the last one can be dragged onto the rack'
   test.skip(!(await readyToDiscard(page)), 'a bot closed before your first turn');
   test.skip(!(await nextDraw(page)), 'the round ended before your second turn');
 
-  // Four tiles have been discarded; unless a bot picked one up they are all still shown.
-  const shown = (await page.getByTestId('gone-discard').count()) + (await page.getByTestId('last-discard').count());
-  expect(shown).toBeGreaterThanOrEqual(1);
-  expect(shown).toBeLessThanOrEqual(6);
+  // Every player has a row of their own discards. Yours holds the tile you just discarded
+  // (unless Bot 1 picked it up), and the one you may take lies in Bot 3's row, on your left.
+  await expect(page.getByTestId('discards')).toHaveCount(4);
+  expect(await page.getByLabel('Discarded by you').getByRole('img').count()).toBeLessThanOrEqual(1);
+  await expect(page.getByLabel('Discarded by Bot 3').getByTestId('last-discard')).toHaveCount(1);
 
   // Drag the newest one into the last empty slot of the rack.
   const last = page.getByTestId('last-discard');

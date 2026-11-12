@@ -119,7 +119,7 @@ describe('botTurn', () => {
     // the round ends when the middle is empty and the bot discards
     g = botTurn(g);
     expect(g.results[0]?.reason ?? 'none').toMatch(/stockOut|close/);
-    expect(handOf(g.players[1]!).includes(taken) || g.round.discards.includes(taken)).toBe(true);
+    expect(handOf(g.players[1]!).includes(taken) || g.round.discards.some((d) => d.tile === taken)).toBe(true);
   });
 
   it('four bots can play whole rounds without breaking a rule', () => {

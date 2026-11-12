@@ -198,6 +198,21 @@ describe('timer', () => {
     g = discard(g, 1, t('K13b'));
     expect(g.round.turn).toBe(2);
   });
+
+  it('remembers who discarded each tile still on the table', () => {
+    let g = createGameWithDeal(SETTINGS, ['a', 'b'], 0, makeDeal('R12', [NORMAL, LOSER], ['R4b', 'R1b', 'Y4b']));
+    g = discard(g, 0, t('R4b'));
+    g = discard(draw(g, 1, 'middle'), 1, t('K13b'));
+    g = discard(draw(g, 0, 'middle'), 0, t('Y4b'));
+    expect(g.round.discards).toEqual([
+      { tile: t('R4b'), by: 0 },
+      { tile: t('K13b'), by: 1 },
+      { tile: t('Y4b'), by: 0 },
+    ]);
+    // a tile that is picked up leaves the table; the others stay with their players
+    g = draw(g, 1, 'discard');
+    expect(g.round.discards.map((d) => d.by)).toEqual([0, 1]);
+  });
 });
 
 describe('restart', () => {

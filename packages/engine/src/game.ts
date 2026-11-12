@@ -42,6 +42,12 @@ export interface Deal {
   middle: TileId[];
 }
 
+/** A discarded tile and the seat that discarded it. */
+export interface Discard {
+  tile: TileId;
+  by: number;
+}
+
 export interface Round {
   number: number;
   starter: number;
@@ -49,12 +55,13 @@ export interface Round {
   joker: Joker;
   middle: TileId[];
   /**
-   * Discarded tiles still on the table, oldest first (a tile that is picked up leaves the list).
-   * Only the last can be taken, only by the next player, and only on that turn: see lastDiscard.
+   * Discarded tiles still on the table, oldest first, each with the seat that discarded it
+   * (a tile that is picked up leaves the list). Only the last can be taken, only by the next
+   * player, and only on that turn: see lastDiscard.
    */
-  discards: TileId[];
+  discards: Discard[];
   /** The discard the current player may take instead of drawing; null once they have drawn. */
-  lastDiscard: { tile: TileId; by: number } | null;
+  lastDiscard: Discard | null;
   current: number;
   /** Counts turns in this round, starting at 0. It goes up each time a player discards. */
   turn: number;
@@ -274,7 +281,7 @@ export function discard(game: Game, seat: number, tile: TileId): Game {
   const r = g.round;
   const p = g.players[seat]!;
   p.groups = removeFromGroups(p.groups, tile);
-  r.discards.push(tile);
+  r.discards.push({ tile, by: seat });
   r.lastDiscard = { tile, by: seat };
   r.firstDiscardDone = true;
   r.restartOffers = [];
@@ -324,7 +331,7 @@ export function close(game: Game, seat: number, tile: TileId): Game {
   );
   const winner = g.players[seat]!;
   winner.groups = closingHand.kind === 'melds' ? closingHand.groups.map((x) => [...x]) : [rest];
-  r.discards.push(tile);
+  r.discards.push({ tile, by: seat });
   r.lastDiscard = null;
   finishRound(g, {
     round: r.number,
