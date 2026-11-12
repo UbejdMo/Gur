@@ -1,0 +1,70 @@
+name: Deploy web
+
+# Publishes the web game to GitHub Pages (https://ubejdmo.github.io/Gur/)
+# every time CI passes on main. It can also be started by hand from the Actions tab.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build web game
+    # Only after a green CI run on a push to main (never for pull requests).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build engine and web app
+        run: pnpm build
+        env:
+          EXPO_BASE_URL: /Gur
+
+      # Pages serves 404.html for unknown paths; the app's router then shows the right screen,
+      # so links like /Gur/play work. .nojekyll keeps folders starting with "_" (Expo's assets).
+      - name: Single-page app fallback
+        run: |
+          cp apps/client/dist/index.html apps/client/dist/404.html
+          touch apps/client/dist/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: apps/client/dist
+
+  deploy:
+    name: Publish to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
