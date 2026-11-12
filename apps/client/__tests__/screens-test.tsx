@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import Home from '@/app/index';
 import { Table } from '@/components/Table';
 import { DiscardRow } from '@/components/DiscardRow';
@@ -35,9 +35,9 @@ describe('Table', () => {
     expect(screen.getAllByTestId('rack-tile')).toHaveLength(15);
     expect(screen.getAllByTestId('rack-row')).toHaveLength(2);
     expect(screen.getByTestId('middle-count')).toHaveTextContent('48');
-    // one row of discards for each player, all empty at the start
+    // in front of every player a row for the tiles left for them, all empty at the start
     expect(screen.getAllByTestId('discards')).toHaveLength(4);
-    expect(screen.getByLabelText('Discarded by Bot 3')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Tiles left for Bot 3')).toBeOnTheScreen();
     expect(screen.queryByTestId('last-discard')).toBeNull();
   });
 
@@ -60,13 +60,14 @@ describe('Table', () => {
     expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
   });
 
-  it('keeps a discarded tile on the table, in the row of the player who discarded it', async () => {
+  it('a tile you discard lies in front of the next player, not in front of you', async () => {
     await renderTable(practiceGame({ you: ALMOST }));
     await fireEvent.press(screen.getAllByRole('button', { name: 'red 9' })[0]!);
     await fireEvent.press(screen.getByRole('button', { name: 'Discard' }));
-    const yours = within(screen.getByLabelText('Discarded by you'));
-    expect(yours.getByTestId('last-discard')).toHaveProp('accessibilityLabel', 'red 9');
-    expect(within(screen.getByLabelText('Discarded by Bot 1')).queryByTestId('last-discard')).toBeNull();
+    // Bot 1 plays after you, so the tile is left for Bot 1
+    const next = within(screen.getByLabelText('Tiles left for Bot 1'));
+    expect(next.getByTestId('last-discard')).toHaveProp('accessibilityLabel', 'red 9');
+    expect(within(screen.getByLabelText('Tiles left for you')).queryByTestId('last-discard')).toBeNull();
   });
 
   it('closes a hand and shows the results', async () => {
@@ -107,7 +108,7 @@ describe('DiscardRow', () => {
     const onTake = jest.fn();
     const discards = ts('B1 B2 B3 B4 B5 B6 B7 B8');
     await render(<DiscardRow {...props} discards={discards} last={t('B8')} takeable onTake={onTake} />);
-    expect(screen.getByLabelText('Discarded by Bot 3')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Tiles left for Bot 3')).toBeOnTheScreen();
     expect(screen.getAllByTestId('gone-discard')).toHaveLength(5);
     expect(screen.queryByLabelText('blue 2')).toBeNull();
     expect(screen.getByLabelText('blue 3')).toBeOnTheScreen();
@@ -127,5 +128,34 @@ describe('DiscardRow', () => {
     await render(<DiscardRow {...props} discards={ts('B1 B2')} last={t('B2')} takeable={false} onTake={onTake} />);
     await fireEvent.press(screen.getByTestId('last-discard'));
     expect(onTake).not.toHaveBeenCalled();
+  });
+});
+
+describe('Table: whose tiles lie where', () => {
+  it('the tile you may take lies in front of you, with the ones you passed up', async () => {
+    jest.useFakeTimers();
+    try {
+      // Bot 3 starts, so its first discard is left for you
+      await render(
+        <Table
+          aceHigh
+          timer={false}
+          botDelayMs={100}
+          newGame={() => practiceGame({ starter: 3 })}
+          onMenu={jest.fn()}
+        />,
+      );
+      await act(async () => {
+        jest.advanceTimersByTime(150);
+      });
+      const yours = within(screen.getByLabelText('Tiles left for you'));
+      expect(yours.getByTestId('last-discard')).toBeOnTheScreen();
+      // pass it up: draw from the middle instead; it stays in front of you, gone for good
+      await fireEvent.press(screen.getByTestId('draw-middle'));
+      expect(yours.queryByTestId('last-discard')).toBeNull();
+      expect(yours.getAllByTestId('gone-discard')).toHaveLength(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

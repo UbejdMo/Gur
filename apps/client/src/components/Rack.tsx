@@ -11,7 +11,9 @@ import { MAX_COLS, MIN_COLS, ROWS, colsOf } from '@/game/rackLayout';
 import type { Layout, Side } from '@/game/rackLayout';
 import { colors } from '@/theme';
 
-const PAD = 16; // room for the bolts at each end
+/** Padding at each end of the rack: room for the bolts. */
+export const RACK_PAD = 16;
+const PAD = RACK_PAD;
 const PAD_TOP = 8;
 const ROW_GAP = 6;
 const BAR = 4;
@@ -32,6 +34,8 @@ type Props = {
   onDropUp: (tile: TileId) => void;
   /** Largest slot width in points, so the rack fits the screen's height too. */
   maxSlot?: number;
+  /** The most columns the rack may have, however wide it is. */
+  maxCols?: number;
   /** The rack has room for a different number of columns than the layout has. */
   onResize?: (cols: number) => void;
   ref?: Ref<RackHandle>;
@@ -62,6 +66,7 @@ export function Rack({
   onDrop,
   onDropUp,
   maxSlot = 64,
+  maxCols = MAX_COLS,
   onResize,
   ref,
 }: Props) {
@@ -80,7 +85,7 @@ export function Rack({
   const cols = colsOf(layout);
   const avail = (measured ?? 360) - PAD * 2;
   const ideal = Math.max(22, Math.min(maxSlot, Math.floor(avail / MIN_COLS)));
-  const wantCols = Math.max(MIN_COLS, Math.min(MAX_COLS, Math.floor(avail / ideal)));
+  const wantCols = Math.max(MIN_COLS, Math.min(maxCols, MAX_COLS, Math.floor(avail / ideal)));
   const slot = Math.max(14, Math.min(Math.floor(avail / cols), Math.ceil(ideal * 1.15)));
   // Any width left over is shared between the two ends.
   const inset = Math.max(0, Math.floor((avail - cols * slot) / 2));
