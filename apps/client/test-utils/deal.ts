@@ -16,6 +16,8 @@ export function t(code: string): TileId {
 export const ts = (codes: string) => codes.trim().split(/\s+/).map(t);
 
 export const NORMAL = 'K11 B11 R11 Y11 Y7 Y8 Y9 Y10 R3 R4 R5 K3 B3 R3b';
+/** Like NORMAL but one tile short of a closing hand (blue 9 instead of the third 3). */
+export const ALMOST = 'K11 B11 R11 Y11 Y7 Y8 Y9 Y10 R3 R4 R5 K3 B3 B9';
 export const FILLER = [
   'B1b B2b B3b B5b B6b B7b K1b K2b K3b K5b K6b K7b B13b K13b',
   'Y1b Y2b Y3b Y5b Y6b R6b R7b R8b R10b R11b R12b R13b B4b K4b',

@@ -4,7 +4,7 @@
     "slug": "gur",
     "scheme": "gur",
     "version": "0.1.0",
-    "orientation": "default",
+    "orientation": "landscape",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {

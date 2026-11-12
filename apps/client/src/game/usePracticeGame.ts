@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useReducer, useState } from 'react';
-import { checkClosingHand, createGame, handOf, turnSeconds } from '@gur/engine';
+import { createGame, handOf, turnSeconds } from '@gur/engine';
 import type { Game, TileId } from '@gur/engine';
-import { YOU, initialState, practiceReducer } from './practiceReducer';
+import { YOU, closingTiles, initialState, practiceReducer } from './practiceReducer';
 
 export { YOU };
 export const PLAYER_NAMES = ['You', 'Bot 1', 'Bot 2', 'Bot 3'];
@@ -26,7 +26,7 @@ export function usePracticeGame({
 }: PracticeOptions) {
   const [state, dispatch] = useReducer(practiceReducer, undefined, () => initialState(newGame(aceHigh)));
   const [tick, setTick] = useState<{ turn: string; left: number } | null>(null);
-  const { game, layout, selected, message } = state;
+  const { game, layout, selected, message, log } = state;
   const { round, status } = game;
   const yourTurn = status === 'playing' && round.current === YOU;
   const hand = handOf(game.players[YOU]!);
@@ -63,15 +63,8 @@ export function usePracticeGame({
   }, [timing, turn, turnTotal]);
   const secondsLeft = timing ? (tick?.turn === turn ? tick.left : turnTotal) : null;
 
-  const canCloseWith = useMemo(() => {
-    const ok = new Set<TileId>();
-    if (!yourTurn || round.phase !== 'discard' || hand.length !== 15) return ok;
-    for (const t of hand) {
-      const rest = hand.filter((x) => x !== t);
-      if (checkClosingHand(rest, round.joker, game.settings.aceHigh)) ok.add(t);
-    }
-    return ok;
-  }, [yourTurn, round.phase, round.joker, hand, game.settings.aceHigh]);
+  // Tiles you could close with right now. Close works whenever this isn't empty.
+  const canCloseWith = useMemo(() => new Set(closingTiles(game)), [game]);
 
   const canDiscardNow = yourTurn && round.phase === 'discard';
 
@@ -96,11 +89,12 @@ export function usePracticeGame({
     layout,
     selected,
     message,
+    log,
     secondsLeft,
     yourTurn,
     canDiscardNow,
     canDiscard: canDiscardNow && selected !== null,
-    canClose: selected !== null && canCloseWith.has(selected),
+    canClose: canCloseWith.size > 0,
     canCloseWith,
     lastDiscardTakeable: yourTurn && round.phase === 'draw' && round.lastDiscard !== null,
 
