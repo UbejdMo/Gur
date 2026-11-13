@@ -51,14 +51,15 @@ export function Table({ onMenu, ...options }: Props) {
   const [lifted, setLifted] = useState(false);
   const [feltSize, setFeltSize] = useState<{ width: number; height: number } | null>(null);
   const rackRef = useRef<RackHandle>(null);
-  const { drawMiddle, takeDiscard } = p;
+  const { drawMiddle, takeDiscard, takeIndicator } = p;
   // A tile let go over the rack lands on that slot; let go anywhere else, it goes back.
   const dropOnRack = useMemo(
     () => ({
       middle: (x: number, y: number) => rackRef.current?.locate(x, y, (place) => place && drawMiddle(place)),
       discard: (x: number, y: number) => rackRef.current?.locate(x, y, (place) => place && takeDiscard(place)),
+      indicator: (x: number, y: number) => rackRef.current?.locate(x, y, (place) => place && takeIndicator(place)),
     }),
-    [drawMiddle, takeDiscard],
+    [drawMiddle, takeDiscard, takeIndicator],
   );
 
   const status = !playing
@@ -69,9 +70,11 @@ export function Table({ onMenu, ...options }: Props) {
         ? 'Your turn: draw from the middle or take the last discard (tap or drag)'
         : p.canClose
           ? 'You can close! Drag your extra tile up, or press Close'
-          : p.selected === null
-            ? 'Drag a tile up off your rack to discard it'
-            : 'Discard it, or tap a slot to move it there';
+          : p.tookIndicator
+            ? 'You took the indicator: connect your tiles on the rack, then close'
+            : p.selected === null
+              ? 'Drag a tile up off your rack to discard it'
+              : 'Discard it, or tap a slot to move it there';
 
   const short = height < 560;
   // A phone held sideways: 300 to 400 points of height (less inside a browser, where the
@@ -128,6 +131,9 @@ export function Table({ onMenu, ...options }: Props) {
       onDraw={drawMiddle}
       onDropAt={dropOnRack.middle}
       onDragChange={setLifted}
+      indicatorTaken={round.indicatorTakenBy !== null}
+      onTakeIndicator={takeIndicator}
+      onIndicatorDropAt={dropOnRack.indicator}
       tileWidth={feltTile}
       maxStacks={sizes.stacks}
       dense={tight}

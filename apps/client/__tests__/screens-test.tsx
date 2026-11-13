@@ -4,7 +4,7 @@ import { Table } from '@/components/Table';
 import { StyleSheet } from 'react-native';
 import { DiscardRow } from '@/components/DiscardRow';
 import { colors, tileInk } from '@/theme';
-import { ALMOST, READY, practiceGame, t, ts } from '../test-utils/deal';
+import { ALMOST, NEEDS_K13, READY, practiceGame, t, ts } from '../test-utils/deal';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), replace: jest.fn() } }));
 
@@ -171,5 +171,48 @@ describe('Table: whose tiles lie where', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('Table: the indicator', () => {
+  /** Black 13 is the indicator; Bot 3 starts and discards, then it is your turn to draw. */
+  async function yourDraw(you: string) {
+    await render(
+      <Table
+        aceHigh
+        timer={false}
+        botDelayMs={100}
+        newGame={() => practiceGame({ you, indicator: 'K13', starter: 3 })}
+        onMenu={jest.fn()}
+      />,
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(150);
+    });
+  }
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('tapping it takes it when it completes your hand; you are then told to close', async () => {
+    await yourDraw(NEEDS_K13);
+    const middle = screen.getByTestId('middle-count').props.children as number;
+    await fireEvent.press(screen.getByTestId('indicator'));
+    expect(screen.queryByTestId('indicator')).toBeNull();
+    expect(screen.getByTestId('indicator-taken')).toBeOnTheScreen();
+    expect(screen.getAllByTestId('rack-tile')).toHaveLength(15);
+    expect(screen.getByRole('button', { name: 'black 13' })).toBeOnTheScreen();
+    // it is not a draw from the middle
+    expect(screen.getByTestId('middle-count')).toHaveTextContent(String(middle));
+    expect(screen.getByTestId('status')).toHaveTextContent(/You took the indicator: connect your tiles/);
+  });
+
+  it('tapping it when it would not complete your hand takes nothing and says why', async () => {
+    await yourDraw(ALMOST);
+    const middle = screen.getByTestId('middle-count').props.children as number;
+    await fireEvent.press(screen.getByTestId('indicator'));
+    expect(screen.getByTestId('message')).toHaveTextContent(/only take the indicator when it lets you close/);
+    expect(screen.getByTestId('indicator')).toBeOnTheScreen();
+    expect(screen.getAllByTestId('rack-tile')).toHaveLength(14);
+    expect(screen.getByTestId('middle-count')).toHaveTextContent(String(middle));
   });
 });

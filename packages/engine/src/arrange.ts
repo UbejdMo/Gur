@@ -6,6 +6,7 @@
 import { faceOf, isRealJoker, tileValue } from './tiles';
 import type { Face, Joker, TileId } from './tiles';
 import { isMeld } from './melds';
+import { isMosaic, isSevenPairs } from './hand';
 
 export interface Arrangement {
   /** Valid melds. */
@@ -123,4 +124,26 @@ export function bestArrangement(hand: readonly TileId[], joker: Joker, aceHigh: 
 /** The fewest points a hand can be left with: what it costs when someone else closes. */
 export function bestPenalty(hand: readonly TileId[], joker: Joker, aceHigh: boolean): number {
   return bestArrangement(hand, joker, aceHigh).penalty;
+}
+
+/**
+ * A tile that can be discarded from a 15-tile hand to leave a closing hand, however the
+ * tiles are arranged, or null. With `preferJoker` a real joker is tried first, because
+ * closing with it is a double; without it a real joker is the last resort.
+ */
+export function closingDiscard(
+  hand: readonly TileId[],
+  joker: Joker,
+  aceHigh: boolean,
+  preferJoker = true,
+): TileId | null {
+  if (hand.length !== 15) return null;
+  const a = new HandAnalysis(hand, joker, aceHigh);
+  const order = (t: TileId) => Number(isRealJoker(t, joker)) * (preferJoker ? -1 : 1);
+  for (const tile of [...hand].sort((x, y) => order(x) - order(y))) {
+    if (a.cost(a.maskWithout(tile)) === 0) return tile;
+    const rest = hand.filter((t) => t !== tile);
+    if (isSevenPairs(rest, joker) || isMosaic(rest, joker, aceHigh)) return tile;
+  }
+  return null;
 }

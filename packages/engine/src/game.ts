@@ -7,7 +7,7 @@
  */
 import { TILE_COUNT, TILES, getTile, isRealJoker, jokerFromIndicator } from './tiles';
 import type { Joker, TileId } from './tiles';
-import { HandAnalysis, bestPenalty } from './arrange';
+import { HandAnalysis, bestPenalty, closingDiscard } from './arrange';
 import { arrangedClosingHand, checkClosingHand, identicalPairCount } from './hand';
 import type { ClosingHand } from './hand';
 
@@ -62,6 +62,11 @@ export interface Round {
   discards: Discard[];
   /** The discard the current player may take instead of drawing; null once they have drawn. */
   lastDiscard: Discard | null;
+  /**
+   * The seat that took the indicator, or null. A player may take it instead of drawing when it
+   * completes their hand, and then has to close on that turn.
+   */
+  indicatorTakenBy: number | null;
   current: number;
   /** Counts turns in this round, starting at 0. It goes up each time a player discards. */
   turn: number;
@@ -195,6 +200,7 @@ function applyDeal(game: Game, roundNumber: number, starter: number, deal: Deal)
     middle,
     discards: [],
     lastDiscard: null,
+    indicatorTakenBy: null,
     current: starter,
     turn: 0,
     phase: 'discard',
@@ -252,13 +258,37 @@ export function arrange(game: Game, seat: number, groups: TileId[][]): Game {
   return g;
 }
 
-/** Take the tile the previous player just discarded, or draw from the middle. */
-export function draw(game: Game, seat: number, source: 'middle' | 'discard'): Game {
+/**
+ * Whether this player may take the indicator now: it is their turn to draw, it is still on
+ * the table, and with it their 15 tiles hold a closing hand.
+ */
+export function canTakeIndicator(game: Game, seat: number): boolean {
+  const r = game.round;
+  if (game.status !== 'playing' || r.current !== seat || r.phase !== 'draw' || r.indicatorTakenBy !== null) {
+    return false;
+  }
+  const hand = [...handOf(game.players[seat]!), r.indicator];
+  return closingDiscard(hand, r.joker, game.settings.aceHigh) !== null;
+}
+
+/**
+ * Take the tile the previous player just discarded, draw from the middle, or take the
+ * indicator. The indicator can only be taken to close: when it completes the hand, and the
+ * player then has to close on that turn.
+ */
+export function draw(game: Game, seat: number, source: 'middle' | 'discard' | 'indicator'): Game {
   assertTurn(game, seat, 'draw');
   const g = clone(game);
   const r = g.round;
   let tile: TileId;
-  if (source === 'discard') {
+  if (source === 'indicator') {
+    if (r.indicatorTakenBy !== null) throw new RuleError('The indicator has been taken');
+    if (!canTakeIndicator(game, seat)) {
+      throw new RuleError('You can only take the indicator when it lets you close');
+    }
+    tile = r.indicator;
+    r.indicatorTakenBy = seat;
+  } else if (source === 'discard') {
     if (!r.lastDiscard) throw new RuleError('There is no discard to take');
     tile = r.lastDiscard.tile;
     r.discards.pop();
@@ -277,6 +307,9 @@ export function draw(game: Game, seat: number, source: 'middle' | 'discard'): Ga
 export function discard(game: Game, seat: number, tile: TileId): Game {
   assertTurn(game, seat, 'discard');
   if (!handOf(game.players[seat]!).includes(tile)) throw new RuleError('That tile is not in your hand');
+  if (game.round.indicatorTakenBy === seat) {
+    throw new RuleError('You took the indicator, so you have to close this turn');
+  }
   const g = clone(game);
   const r = g.round;
   const p = g.players[seat]!;
@@ -349,7 +382,9 @@ export function close(game: Game, seat: number, tile: TileId): Game {
  * The automatic move when a turn's time runs out: draw from the middle if the
  * player hasn't drawn, then discard the tile that leaves them the fewest points
  * (their highest tile outside the best melds). Real jokers are kept unless
- * nothing else is left. It never closes.
+ * nothing else is left. It never closes, with one exception: a player who took
+ * the indicator has to close, so the game lays their melds out and closes for
+ * them (keeping a real joker in the hand when it can: no double by accident).
  */
 export function timeoutMove(game: Game): Game {
   assertPlaying(game);
@@ -357,6 +392,15 @@ export function timeoutMove(game: Game): Game {
   const seat = g.round.current;
   if (g.round.phase === 'draw') {
     g = draw(g, seat, g.round.middle.length > 0 ? 'middle' : 'discard');
+  }
+  if (g.round.indicatorTakenBy === seat) {
+    const hand = handOf(g.players[seat]!);
+    const { joker } = g.round;
+    const { aceHigh } = g.settings;
+    const out = closingDiscard(hand, joker, aceHigh, false)!;
+    const a = new HandAnalysis(hand, joker, aceHigh);
+    const { melds, loose } = a.arrangement(a.maskWithout(out));
+    return close(arrange(g, seat, [...melds, ...loose.map((t) => [t]), [out]]), seat, out);
   }
   return discard(g, seat, autoDiscardTile(g, seat));
 }

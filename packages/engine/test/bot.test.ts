@@ -22,7 +22,11 @@ const yellowTwo = jokerFromIndicator(t('Y1')); // joker = yellow 2
 const SETTINGS: Settings = { aceHigh: true, rounds: 1 };
 
 function tileCount(g: Game): number {
-  return g.players.reduce((s, p) => s + handOf(p).length, 0) + g.round.middle.length + g.round.discards.length + 1;
+  // every tile is in a hand, in the middle, discarded, or the indicator (which a player may have taken)
+  const onTable = g.round.indicatorTakenBy === null ? 1 : 0;
+  return (
+    g.players.reduce((s, p) => s + handOf(p).length, 0) + g.round.middle.length + g.round.discards.length + onTable
+  );
 }
 
 describe('bestArrangement', () => {
@@ -98,6 +102,17 @@ describe('botTurn', () => {
     const g = createGameWithDeal(SETTINGS, ['bot', 'p'], 0, makeDeal('Y1', [NORMAL, OTHER], ['Y2']));
     const after = botTurn(g);
     expect(after.results[0]).toMatchObject({ reason: 'close', winners: [0], double: true });
+  });
+
+  it('takes the indicator when that completes its hand, and closes', () => {
+    // black 13 is the indicator; the bot holds two 13s and needs the third
+    const waiting = 'R2 K2 Y2 K1 R13 B13 R8 K6 K7 K8 K9 K10 Y10 R10';
+    const other = 'B1b B2b B3b B5b B6b B7b K2b K3b K4b K5b K6b K7b B13b K13b';
+    let g = createGameWithDeal(SETTINGS, ['bot', 'b'], 1, makeDeal('K13', [waiting, other], ['R1b']));
+    g = discard(g, 1, t('R1b'));
+    g = botTurn(g);
+    expect(g.round.indicatorTakenBy).toBe(0);
+    expect(g.results[0]).toMatchObject({ reason: 'close', winners: [0], scores: [-10, 26] });
   });
 
   it('draws, arranges its rack, and discards when it cannot close', () => {

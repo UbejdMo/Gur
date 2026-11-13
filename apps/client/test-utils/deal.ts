@@ -23,6 +23,11 @@ export const NORMAL = 'K11 B11 R11 Y11 Y7 Y8 Y9 Y10 R3 R4 R5 K3 B3 R3b';
 export const READY = 'R1 R2 R3 R4 R5 R6 R7 K1 K2 K3 K4 K5 K6 K7';
 /** Like NORMAL but one tile short of a closing hand (blue 9 instead of the third 3). */
 export const ALMOST = 'K11 B11 R11 Y11 Y7 Y8 Y9 Y10 R3 R4 R5 K3 B3 B9';
+/**
+ * One tile short of closing, for a table whose indicator is black 13: with a third 13 the
+ * hand is a run of seven, a run of five and a set of 13s, with one tile to spare.
+ */
+export const NEEDS_K13 = 'R1 R2 R3 R4 R5 R6 R7 K5 K6 K7 K8 K9 Y13 B13';
 export const FILLER = [
   'B1b B2b B3b B5b B6b B7b K1b K2b K3b K5b K6b K7b B13b K13b',
   'Y1b Y2b Y3b Y5b Y6b R6b R7b R8b R10b R11b R12b R13b B4b K4b',
@@ -31,9 +36,17 @@ export const FILLER = [
 
 /** A 4-player practice game from a fixed deal: you are seat 0, `starter` plays first. */
 export function practiceGame(
-  opts: { you?: string; starter?: number; middleTop?: string[]; indicator?: string; aceHigh?: boolean } = {},
+  opts: {
+    you?: string;
+    /** Bot 1's hand, when a test needs it to hold something particular. */
+    bot1?: string;
+    starter?: number;
+    middleTop?: string[];
+    indicator?: string;
+    aceHigh?: boolean;
+  } = {},
 ): Game {
-  const hands = [opts.you ?? NORMAL, ...FILLER].map(ts);
+  const hands = [opts.you ?? NORMAL, opts.bot1 ?? FILLER[0]!, FILLER[1]!, FILLER[2]!].map(ts);
   const top = (opts.middleTop ?? ['R9b']).map(t);
   const indicator = t(opts.indicator ?? 'R12');
   const used = new Set([indicator, ...hands.flat(), ...top]);
