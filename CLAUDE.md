@@ -19,7 +19,7 @@ Run from the repo root. Node 22 and pnpm 9 (via `corepack enable`).
 - `pnpm test`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm format`
 - One package: `pnpm --filter @gur/engine test`
 - `pnpm dev` builds the engine and starts the Expo dev server (press `w` for web, or scan the QR code with Expo Go)
-- `pnpm test:e2e` builds the web app and runs the Playwright browser tests (desktop and phone sizes)
+- `pnpm test:e2e` builds the web app and runs the Playwright browser tests (desktop, phone upright and phone sideways)
 - Add Expo packages from `apps/client` with `pnpm exec expo install <package>`, never plain `pnpm add`, so versions match the Expo SDK.
 - Stay on TypeScript 6.x until typescript-eslint supports TypeScript 7. Keep `@types/node` on 22.x to match Node 22. Dependabot is configured to skip both, and to skip Expo-pinned packages (upgrade those with `pnpm exec expo install --fix`).
 
@@ -30,8 +30,8 @@ Run from the repo root. Node 22 and pnpm 9 (via `corepack enable`).
   - The joker is the indicator's number + 1 in the same colour (13 → 1). Both real copies are wild. The printed joker is not wild: it counts as the joker number.
   - Scoring: the winner gets -10, or -20 when closing by discarding a real joker (a "double"), which also doubles everyone else's points. Special closing hands score the same as a normal close.
   - Points and closing treat the rack differently. For points, a loser always counts their best possible hand (the fewest unconnected points), however the rack is arranged. For closing, the rack decides: every group on it must be a meld once the 15th tile is taken off (seven pairs and mosaic count however they are placed). The app only offers Close when the rack shows that.
-  - Discarded tiles stay on the table and the app shows each player's latest six, beside that player. Only the newest can be taken, only by the next player, and only on that turn; after that it is gone for good.
-  - The app shows a two-row rack as wide as the screen (12 or more slots a row, dealt 7 on top and 7 below); tiles side by side form a group, and the engine's arrangement always mirrors the rack. A tile dropped on another slides in beside it; tiles never swap.
+  - Discarded tiles stay on the table. A discard is left for the next player, so it lies in front of them, not in front of whoever discarded it; the app shows the latest six in front of each player. Only the newest can be taken, only by the next player, and only on that turn; after that it is gone for good.
+  - The app shows a two-row rack (12 slots a row on an upright phone, up to 14 sideways, dealt 7 on top and 7 below); tiles side by side form a group, and the engine's arrangement always mirrors the rack. A tile dropped on another slides in beside it; tiles never swap.
   - 12-13-1 is a table option; 13-1-2 is never valid.
 - The server is authoritative: clients send intentions, the server validates them with `@gur/engine`. Never trust a client's game state.
 - Engine functions are pure: they return a new state and never mutate their input. Illegal moves throw `RuleError`.

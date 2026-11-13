@@ -18,6 +18,7 @@ export default defineConfig({
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
     { name: 'phone', use: { ...devices['Pixel 7'] } },
+    { name: 'phone-sideways', use: { ...devices['Pixel 7 landscape'] } },
   ],
   webServer: {
     command: `pnpm exec expo serve --port ${PORT}`,

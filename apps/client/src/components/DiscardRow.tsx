@@ -11,22 +11,23 @@ import {
   discardRowHeight,
   discardRowWidth,
 } from '@/game/feltLayout';
+import type { RowBadge } from '@/game/feltLayout';
 import { colors } from '@/theme';
 
 type Props = {
-  /** The player whose discards these are. */
+  /** The player these tiles lie in front of: they were left for this player. */
   name: string;
   you?: boolean;
-  /** This player's discarded tiles still on the table, oldest first. */
+  /** The tiles left for this player (discarded by the player before them), oldest first. */
   discards: readonly TileId[];
-  /** The tile the player to move may still take, when it lies in this row: always the newest one. */
+  /** The tile this player may still take, if they haven't drawn yet: always the newest one. */
   last: TileId | null;
   /** It is your turn to draw, so you may take that tile. */
   takeable: boolean;
   joker: Joker;
   tileWidth: number;
-  /** A narrower name badge, for screens short of width. */
-  compact?: boolean;
+  /** The name badge at the start of the row; 'none' when the player's panel is right beside it. */
+  badge?: RowBadge;
   onTake: () => void;
   /** The last tile was dragged and let go at this point on the screen. */
   onDropAt: (pageX: number, pageY: number) => void;
@@ -34,10 +35,10 @@ type Props = {
 };
 
 /**
- * One player's discarded tiles, for everyone to see: their latest six, oldest on the left.
- * Only the newest discard on the whole table can be picked up, only by the next player and
- * only on that turn; after that it is gone for good and stays here, dimmed, so players can
- * see which tiles are out of the game.
+ * The tiles lying in front of one player, for everyone to see: the latest six that the player
+ * before them discarded, oldest on the left. A discard is left for the next player only: they
+ * can pick it up on that turn or never, and nobody else can. Tiles that were not taken stay
+ * here, dimmed, so players can see which tiles are out of the game.
  */
 export function DiscardRow({
   name,
@@ -47,7 +48,7 @@ export function DiscardRow({
   takeable,
   joker,
   tileWidth,
-  compact = false,
+  badge = 'full',
   onTake,
   onDropAt,
   onDragChange,
@@ -55,15 +56,19 @@ export function DiscardRow({
   const shown = discards.slice(-DISCARDS_SHOWN);
   return (
     <View
-      style={[styles.wrap, { width: discardRowWidth(tileWidth, compact), height: discardRowHeight(tileWidth) }]}
+      style={[styles.wrap, { width: discardRowWidth(tileWidth, badge), height: discardRowHeight(tileWidth) }]}
       testID="discards"
-      accessibilityLabel={`Discarded by ${you ? 'you' : name}`}
+      accessibilityLabel={`Tiles left for ${you ? 'you' : name}`}
     >
-      <View style={[styles.badge, compact && styles.badgeCompact, { backgroundColor: avatarColor(name) }]}>
-        <Text style={[styles.badgeText, compact && styles.badgeTextCompact]} selectable={false}>
-          {you ? 'You' : name.at(-1)}
-        </Text>
-      </View>
+      {badge !== 'none' && (
+        <View
+          style={[styles.badge, badge === 'compact' && styles.badgeCompact, { backgroundColor: avatarColor(name) }]}
+        >
+          <Text style={[styles.badgeText, badge === 'compact' && styles.badgeTextCompact]} selectable={false}>
+            {you ? 'You' : name.at(-1)}
+          </Text>
+        </View>
+      )}
       {/* Always six tiles wide, so the table doesn't shift as tiles arrive. */}
       <View style={styles.row}>
         {shown.map((id) =>

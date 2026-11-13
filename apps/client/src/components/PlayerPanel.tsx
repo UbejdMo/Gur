@@ -63,13 +63,17 @@ export function PlayerPanel({
         </Text>
       </View>
       <View style={[styles.info, tiny && styles.infoTiny]}>
-        <Text style={[styles.name, tiny && styles.nameTiny]} numberOfLines={1}>
-          {name}
-        </Text>
+        {/* Your own one-line panel skips the name: the badge already says "You". */}
+        {!(tiny && you) && (
+          <Text style={[styles.name, tiny && styles.nameTiny]} numberOfLines={1}>
+            {name}
+          </Text>
+        )}
         <Text style={[styles.detail, tiny && styles.detailTiny]} numberOfLines={1}>
-          {tiny ? `${tileCount} · ${points} pts` : `${tileCount} tiles · ${points} pts`}
+          {tiny && !you ? `${tileCount} · ${points} pts` : `${tileCount} tiles · ${points} pts`}
         </Text>
         {secondsLeft !== undefined && secondsLeft !== null && (
+          // On the one-line panel the timer runs along the bottom edge, so the text keeps the width.
           <View style={[styles.timerTrack, tiny && styles.timerTiny]}>
             <View
               style={[
@@ -110,7 +114,7 @@ const styles = StyleSheet.create({
   infoTiny: { flexDirection: 'row', alignItems: 'baseline', gap: 5 },
   nameTiny: { fontSize: 12 },
   detailTiny: { fontSize: 10 },
-  timerTiny: { width: 28, marginTop: 0, alignSelf: 'center' },
+  timerTiny: { position: 'absolute', left: 0, right: 0, bottom: -5, width: 'auto', height: 3, marginTop: 0 },
   info: { gap: 2, alignItems: 'flex-start', flexShrink: 1 },
   name: { color: colors.text, fontWeight: '700', fontSize: 14 },
   detail: { color: colors.textMuted, fontSize: 12 },

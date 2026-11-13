@@ -5,11 +5,11 @@ import { handOf, tileId } from '@gur/engine';
 import { DiscardRow } from './DiscardRow';
 import { MiddlePile } from './MiddlePile';
 import { PlayerPanel } from './PlayerPanel';
-import { Rack } from './Rack';
+import { RACK_PAD, Rack } from './Rack';
 import type { RackHandle } from './Rack';
 import { ResultsOverlay } from './ResultsOverlay';
 import { Tile } from './Tile';
-import { feltLayout } from '@/game/feltLayout';
+import { SIDEWAYS_RACK_COLS, feltLayout, sidewaysRack } from '@/game/feltLayout';
 import { PLAYER_NAMES, YOU, usePracticeGame } from '@/game/usePracticeGame';
 import type { PracticeOptions } from '@/game/usePracticeGame';
 import { colors } from '@/theme';
@@ -17,11 +17,17 @@ import { colors } from '@/theme';
 type Props = PracticeOptions & { onMenu: () => void };
 
 /**
- * The practice table: a felt table in the middle, players on both sides, your rack below.
- * Play runs counter-clockwise: you, the player on your right, the one across, the one on your left.
+ * The practice table. Play runs counter-clockwise: you, the player on your right, the one
+ * across, the one on your left.
  *
- * The felt shows the middle and, beside each player, that player's last six discarded tiles.
- * The newest discard and the top of
+ * Sideways, the felt is a table seen from above and takes the full width: the three bots sit
+ * at its left, far and right edges, the pile is in the centre, and your rack lies below with
+ * your own panel, the status and the buttons at its two ends. Upright, the bots are in a line
+ * on top and everything is stacked.
+ *
+ * In front of each player lie the last six tiles left for them: the ones the player before
+ * them discarded. So a tile you discard lands in front of the player on your right, and the
+ * tiles in front of you are the ones you were offered. The newest discard and the top of
  * the middle can be tapped, or dragged onto the rack to land exactly where you want them.
  *
  * Buttons here are never given `disabled`: a button that disables itself in the middle of its
@@ -34,7 +40,7 @@ export function Table({ onMenu, ...options }: Props) {
   const { round } = game;
   const playing = game.status === 'playing';
   const { width, height } = useWindowDimensions();
-  const wide = width >= 700 && width > height;
+  const wide = width >= 560 && width > height;
   // While a tile from the table is in the air, the table is lifted above the rack so it stays in view.
   const [lifted, setLifted] = useState(false);
   const [feltSize, setFeltSize] = useState<{ width: number; height: number } | null>(null);
@@ -62,14 +68,24 @@ export function Table({ onMenu, ...options }: Props) {
             : 'Discard it, or tap a slot to move it there';
 
   const short = height < 560;
-  // A phone held sideways inside a browser: the address bar leaves only about 300 points of
-  // height, so everything around the rack is squeezed to the minimum.
-  const tight = wide && height < 360;
+  // A phone held sideways: 300 to 400 points of height (less inside a browser, where the
+  // address bar takes its share), so everything around the rack is squeezed to the minimum.
+  const tight = wide && height < 420;
 
   // Sizes come from the screen: the rack gets about 45% of the height in landscape (two rows
   // of tiles 1.4 times as tall as wide, plus the planks), the felt shows smaller tiles.
-  const rackMaxSlot = Math.max(24, Math.min(64, Math.floor((height * (wide ? 0.45 : 0.3) - 76) / 2.8) + 2));
+  // On a phone held sideways the slots are at least 28 points wide whenever that still leaves
+  // the felt the height it needs (about 126 points); a rack of that size is 2.8 x slot + 70 tall.
+  const slotFloor = tight ? Math.max(22, Math.min(28, Math.floor((height - 17 - 126 - 70) / 2.8))) : 24;
+  const rackMaxSlot = Math.max(slotFloor, Math.min(64, Math.floor((height * (wide ? 0.45 : 0.3) - 76) / 2.8) + 2));
   const feltTile = wide ? Math.max(tight ? 18 : 22, Math.min(44, Math.floor(height / 18))) : 24;
+
+  // Sideways, the rack is only as wide as a hand needs; what is left at its two ends holds
+  // your panel with the status, and the joker with the buttons.
+  const pad = tight ? 6 : short ? 8 : 16;
+  const contentWidth = Math.min(width, 1280) - pad * 2;
+  const sideMin = tight ? 118 : short ? 140 : 190;
+  const sideways = sidewaysRack(contentWidth - 2 * (sideMin + 8), rackMaxSlot, RACK_PAD);
 
   const panel = (seat: number, compact = false) => (
     <PlayerPanel
@@ -80,17 +96,23 @@ export function Table({ onMenu, ...options }: Props) {
       you={seat === YOU}
       secondsLeft={seat === YOU ? p.secondsLeft : undefined}
       compact={compact}
-      small={wide && short && !tight}
-      tiny={tight}
+      small={wide && !short}
+      tiny={wide && short}
     />
   );
 
   // The felt's own size decides how big the discards are and how much of the pile is drawn.
   // Until it has been measured, go by the screen. Its rim and padding come off each way.
   const feltFrame = tight ? 16 : 32;
-  const feltW = (feltSize?.width ?? (wide ? Math.min(width, 1280) - 340 : width - 20)) - feltFrame;
-  const feltH = (feltSize?.height ?? (wide ? height * 0.4 : 330)) - feltFrame;
-  const sizes = feltLayout(feltW, feltH, feltTile, wide);
+  const feltW = (feltSize?.width ?? (wide ? contentWidth : width - 20)) - feltFrame;
+  const feltH = (feltSize?.height ?? (wide ? height * 0.45 : 330)) - feltFrame;
+  const sizes = feltLayout(feltW, feltH, feltTile, {
+    wide,
+    dense: tight,
+    panelWidth: short ? 128 : 154,
+    panelHeight: short ? 34 : 50,
+    maxDiscard: Math.min(34, Math.round(feltTile * 1.4)),
+  });
 
   const pile = (
     <MiddlePile
@@ -106,77 +128,88 @@ export function Table({ onMenu, ...options }: Props) {
     />
   );
 
-  const discards = (seat: number) => (
+  // A discard is left for the next player, so it lies in front of them, not of whoever discarded it.
+  const seats = game.players.length;
+  const leftFor = (seat: number, badge: 'full' | 'compact' | 'none' = 'full') => (
     <DiscardRow
       key={seat}
       name={PLAYER_NAMES[seat]!}
       you={seat === YOU}
-      discards={round.discards.filter((d) => d.by === seat).map((d) => d.tile)}
-      last={round.lastDiscard?.by === seat ? round.lastDiscard.tile : null}
-      takeable={p.lastDiscardTakeable}
+      discards={round.discards.filter((d) => (d.by + 1) % seats === seat).map((d) => d.tile)}
+      last={round.lastDiscard && (round.lastDiscard.by + 1) % seats === seat ? round.lastDiscard.tile : null}
+      takeable={seat === YOU && p.lastDiscardTakeable}
       joker={round.joker}
       tileWidth={sizes.discardTile}
-      compact={sizes.arrangement === 'grid'}
+      badge={badge}
       onTake={takeDiscard}
       onDropAt={dropOnRack.discard}
       onDragChange={setLifted}
     />
   );
 
-  // Each player's discards lie in the corner of the felt nearest to them: across and right on
-  // top, left and you at the bottom. The tile you may take is always in the row on your left.
-  const felt = (
+  const onFeltLayout = (e: LayoutChangeEvent) => {
+    const { width: w, height: h } = e.nativeEvent.layout;
+    setFeltSize((old) => (old && old.width === w && old.height === h ? old : { width: w, height: h }));
+  };
+
+  const felt = wide ? (
+    // A table seen from above: left, across and right sit at its edges with their tiles in
+    // front of them, the pile is in the centre, and your tiles lie nearest your rack.
     <View
-      style={[
-        styles.felt,
-        wide ? styles.feltWide : styles.feltNarrow,
-        tight && styles.feltTight,
-        !wide && lifted && styles.lifted,
-      ]}
+      style={[styles.felt, styles.feltCross, tight && styles.feltTight, lifted && styles.lifted]}
       testID="felt"
-      onLayout={(e: LayoutChangeEvent) => {
-        const { width: w, height: h } = e.nativeEvent.layout;
-        setFeltSize((old) => (old && old.width === w && old.height === h ? old : { width: w, height: h }));
-      }}
+      onLayout={onFeltLayout}
     >
-      {sizes.arrangement === 'sides' ? (
-        <>
-          <View style={styles.feltColumn}>
-            {discards(2)}
-            {discards(3)}
+      <View style={styles.feltSide}>
+        {panel(3)}
+        {leftFor(3, 'none')}
+      </View>
+      <View style={styles.feltCentre}>
+        <View style={styles.feltAcross}>
+          {panel(2)}
+          {leftFor(2, 'none')}
+        </View>
+        {sizes.arrangement === 'crossFlat' ? (
+          // On a low table your tiles lie beside the pile: both things you can draw from, together.
+          <View style={styles.feltAcross}>
+            {pile}
+            {leftFor(YOU)}
           </View>
-          {pile}
-          <View style={styles.feltColumn}>
-            {discards(1)}
-            {discards(YOU)}
-          </View>
-        </>
-      ) : (
-        <>
-          <View style={sizes.arrangement === 'grid' ? styles.feltLine : styles.feltStack}>
-            {discards(2)}
-            {discards(1)}
-          </View>
-          {pile}
-          <View style={sizes.arrangement === 'grid' ? styles.feltLine : styles.feltStack}>
-            {discards(3)}
-            {discards(YOU)}
-          </View>
-        </>
-      )}
+        ) : (
+          <>
+            {pile}
+            {leftFor(YOU)}
+          </>
+        )}
+      </View>
+      <View style={styles.feltSide}>
+        {panel(1)}
+        {leftFor(1, 'none')}
+      </View>
+    </View>
+  ) : (
+    <View style={[styles.felt, styles.feltNarrow, lifted && styles.lifted]} testID="felt" onLayout={onFeltLayout}>
+      <View style={sizes.arrangement === 'grid' ? styles.feltLine : styles.feltStack}>
+        {leftFor(2, sizes.arrangement === 'grid' ? 'compact' : 'full')}
+        {leftFor(1, sizes.arrangement === 'grid' ? 'compact' : 'full')}
+      </View>
+      {pile}
+      <View style={sizes.arrangement === 'grid' ? styles.feltLine : styles.feltStack}>
+        {leftFor(3, sizes.arrangement === 'grid' ? 'compact' : 'full')}
+        {leftFor(YOU, sizes.arrangement === 'grid' ? 'compact' : 'full')}
+      </View>
     </View>
   );
 
   const statusPanel = (
-    <View style={[styles.statusPanel, tight && styles.statusPanelTight]}>
-      {p.log && !tight && (
-        <Text style={styles.log} numberOfLines={2} testID="log">
+    <View style={[styles.statusPanel, wide && styles.statusPanelSide, tight && styles.statusPanelTight]}>
+      {p.log && (
+        <Text style={[styles.log, tight && styles.logTight]} numberOfLines={tight ? 3 : 2} testID="log">
           {p.log}
         </Text>
       )}
       <Text
         style={[styles.status, tight && styles.statusTight, p.canClose && styles.statusClose]}
-        numberOfLines={tight ? 1 : undefined}
         testID="status"
         accessibilityLiveRegion="polite"
       >
@@ -196,13 +229,17 @@ export function Table({ onMenu, ...options }: Props) {
         accessibilityRole="button"
         accessibilityState={{ disabled: !p.canDiscard }}
         onPress={() => p.canDiscard && p.discard()}
-        style={[styles.button, !p.canDiscard && styles.dim]}
+        style={[styles.button, wide && styles.buttonSide, !p.canDiscard && styles.dim]}
       >
         <Text style={styles.buttonText}>Discard</Text>
       </Pressable>
       {/* Close only appears once the rack shows a closing hand: every tile connected, one to spare. */}
       {p.canClose && (
-        <Pressable accessibilityRole="button" onPress={() => p.close()} style={[styles.button, styles.closeButton]}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => p.close()}
+          style={[styles.button, wide && styles.buttonSide, styles.closeButton]}
+        >
           <Text style={styles.buttonText}>Close</Text>
         </Pressable>
       )}
@@ -234,7 +271,8 @@ export function Table({ onMenu, ...options }: Props) {
       onMoveSelected={p.moveSelected}
       onDrop={p.drop}
       onDropUp={p.dropUp}
-      maxSlot={rackMaxSlot}
+      maxSlot={wide ? sideways.slot : rackMaxSlot}
+      maxCols={wide ? SIDEWAYS_RACK_COLS : undefined}
       onResize={p.resize}
     />
   );
@@ -242,23 +280,21 @@ export function Table({ onMenu, ...options }: Props) {
   return (
     <View style={styles.screen}>
       {wide ? (
-        <View style={[styles.wideContent, short && styles.wideShort, tight && styles.wideTight]}>
-          <View style={[styles.tableRow, lifted && styles.lifted]}>
-            <View style={styles.side}>
-              {panel(2)}
-              {panel(3)}
+        <View style={[styles.wideContent, { padding: pad }, short && styles.wideShort]}>
+          {felt}
+          <View style={styles.rackRow}>
+            {/* The side panels are laid over their columns, so the rack alone sets the row's height. */}
+            <View style={styles.rackSide}>
+              <View style={styles.rackSideFill}>
+                {panel(YOU)}
+                {statusPanel}
+              </View>
             </View>
-            {felt}
-            <View style={styles.side}>
-              {panel(1)}
-              {panel(YOU)}
+            <View style={{ width: sideways.width }}>{rack}</View>
+            <View style={styles.rackSide}>
+              <View style={[styles.rackSideFill, styles.rackSideEnd]}>{controls}</View>
             </View>
           </View>
-          <View style={styles.statusRow}>
-            <View style={styles.grow}>{statusPanel}</View>
-            {controls}
-          </View>
-          {rack}
         </View>
       ) : (
         <View style={styles.narrowContent}>
@@ -284,12 +320,14 @@ export function Table({ onMenu, ...options }: Props) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.backdrop },
-  wideContent: { flex: 1, padding: 16, gap: 12, width: '100%', maxWidth: 1280, alignSelf: 'center' },
-  wideShort: { padding: 8, gap: 6 },
-  wideTight: { padding: 6, gap: 5 },
+  wideContent: { flex: 1, gap: 12, width: '100%', maxWidth: 1280, alignSelf: 'center' },
+  wideShort: { gap: 6 },
+  // Your rack with a panel at each end: you and the status on the left, joker and buttons on the right.
+  rackRow: { flexDirection: 'row', alignItems: 'stretch', justifyContent: 'center', gap: 8 },
+  rackSide: { flex: 1, minWidth: 0 },
+  rackSideFill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, gap: 6, overflow: 'hidden' },
+  rackSideEnd: { justifyContent: 'center' },
   narrowContent: { flex: 1, padding: 10, gap: 10 },
-  tableRow: { flex: 1, flexDirection: 'row', gap: 10, minHeight: 0 },
-  side: { justifyContent: 'space-between', gap: 8 },
   panelRow: { flexDirection: 'row', gap: 8 },
   youCell: { flex: 1 },
   felt: {
@@ -301,17 +339,18 @@ const styles = StyleSheet.create({
     borderColor: colors.feltRim,
     padding: 8,
   },
-  feltWide: { flex: 1, flexDirection: 'row', justifyContent: 'space-between' },
   feltNarrow: { flex: 1, minHeight: 200, justifyContent: 'space-between' },
-  // Wide: a column of two discard rows on each side of the pile, one in each corner.
-  feltColumn: { alignSelf: 'stretch', justifyContent: 'space-between', gap: 6 },
+  // Sideways: left player, a centre column (the player across, the pile, your tiles), right player.
+  feltCross: { flex: 1, minHeight: 0, flexDirection: 'row', alignItems: 'stretch', gap: 8 },
+  feltSide: { alignItems: 'center', justifyContent: 'center', gap: 6 },
+  feltCentre: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'space-between' },
+  feltAcross: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   // Upright: two rows on a line, or one under the other, above and below the pile.
   feltLine: { alignSelf: 'stretch', flexDirection: 'row', justifyContent: 'space-between', gap: 6 },
   feltStack: { alignItems: 'center', gap: 6 },
   feltTight: { borderWidth: 4, padding: 4, borderRadius: 14 },
   lifted: { zIndex: 20, elevation: 20 },
   statusRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
-  grow: { flex: 1, justifyContent: 'center' },
   statusPanel: {
     justifyContent: 'center',
     paddingVertical: 8,
@@ -322,13 +361,17 @@ const styles = StyleSheet.create({
     borderColor: colors.panelEdge,
     gap: 2,
   },
-  statusPanelTight: { paddingVertical: 3 },
-  statusTight: { fontSize: 12 },
+  // Beside the rack it fills the space under your panel.
+  statusPanelSide: { flex: 1, minHeight: 0, paddingHorizontal: 8, overflow: 'hidden' },
+  statusPanelTight: { paddingVertical: 3, paddingHorizontal: 5 },
+  statusTight: { fontSize: 11 },
+  logTight: { fontSize: 10 },
   log: { color: colors.textMuted, fontSize: 12, textAlign: 'center' },
   status: { color: colors.text, fontSize: 14, fontWeight: '600', textAlign: 'center' },
   statusClose: { color: colors.accent },
   message: { color: colors.danger, fontSize: 12, textAlign: 'center' },
   button: { justifyContent: 'center', backgroundColor: colors.accent, paddingHorizontal: 14, borderRadius: 10 },
+  buttonSide: { alignItems: 'center', paddingVertical: 8 },
   closeButton: { backgroundColor: colors.meld, borderWidth: 3, borderColor: colors.text },
   dim: { opacity: 0.35 },
   buttonText: { fontSize: 14, fontWeight: '800', color: '#2A2A2A' },

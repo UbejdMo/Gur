@@ -52,6 +52,33 @@ test('home starts a game against bots', async ({ page }) => {
   await expect(page.getByTestId('rack-row')).toHaveCount(2);
 });
 
+test('the table fits the screen: nothing is cut off and nothing scrolls', async ({ page }) => {
+  await startGame(page);
+  const view = page.viewportSize()!;
+  const size = await page.evaluate(() => ({
+    width: document.documentElement.scrollWidth,
+    height: document.documentElement.scrollHeight,
+  }));
+  expect(size.width).toBeLessThanOrEqual(view.width);
+  expect(size.height).toBeLessThanOrEqual(view.height);
+  for (const id of ['felt', 'rack', 'seat-you', 'status', 'joker-tile']) {
+    const box = (await page.getByTestId(id).boundingBox())!;
+    expect(box.x, id).toBeGreaterThanOrEqual(0);
+    expect(box.y, id).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width, id).toBeLessThanOrEqual(view.width);
+    expect(box.y + box.height, id).toBeLessThanOrEqual(view.height);
+  }
+  // every player's row of tiles lies inside the felt
+  const felt = (await page.getByTestId('felt').boundingBox())!;
+  for (const row of await page.getByTestId('discards').all()) {
+    const box = (await row.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(felt.x);
+    expect(box.y).toBeGreaterThanOrEqual(felt.y);
+    expect(box.x + box.width).toBeLessThanOrEqual(felt.x + felt.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(felt.y + felt.height);
+  }
+});
+
 test('the whole rack is usable: slots reach from one end to the other', async ({ page }) => {
   await startGame(page);
   const rack = (await page.getByTestId('rack').boundingBox())!;
@@ -136,11 +163,11 @@ test('discards stay on the table, and the last one can be dragged onto the rack'
   test.skip(!(await readyToDiscard(page)), 'a bot closed before your first turn');
   test.skip(!(await nextDraw(page)), 'the round ended before your second turn');
 
-  // Every player has a row of their own discards. Yours holds the tile you just discarded
-  // (unless Bot 1 picked it up), and the one you may take lies in Bot 3's row, on your left.
+  // In front of every player lie the tiles left for them. The tile you discarded lies in front
+  // of Bot 1 (unless Bot 1 picked it up), and the one you may take lies in front of you.
   await expect(page.getByTestId('discards')).toHaveCount(4);
-  expect(await page.getByLabel('Discarded by you').getByRole('img').count()).toBeLessThanOrEqual(1);
-  await expect(page.getByLabel('Discarded by Bot 3').getByTestId('last-discard')).toHaveCount(1);
+  expect(await page.getByLabel('Tiles left for Bot 1').getByRole('img').count()).toBeLessThanOrEqual(1);
+  await expect(page.getByLabel('Tiles left for you').getByTestId('last-discard')).toHaveCount(1);
 
   // Drag the newest one into the last empty slot of the rack.
   const last = page.getByTestId('last-discard');
