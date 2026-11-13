@@ -52,6 +52,34 @@ test('home starts a game against bots', async ({ page }) => {
   await expect(page.getByTestId('rack-row')).toHaveCount(2);
 });
 
+test('can be added to a home screen, where it opens full screen', async ({ page, request }) => {
+  await page.goto('/');
+  const href = await page.locator('link[rel="manifest"]').getAttribute('href');
+  const manifest = (await (await request.get(new URL(href!, page.url()).toString())).json()) as {
+    display: string;
+    icons: { src: string }[];
+  };
+  expect(manifest.display).toBe('fullscreen');
+  for (const icon of manifest.icons) {
+    expect((await request.get(new URL(icon.src, new URL(href!, page.url())).toString())).ok()).toBe(true);
+  }
+  await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute('content', 'yes');
+  await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', /viewport-fit=cover/);
+});
+
+test('offers full screen where the browser can do it', async ({ page }) => {
+  await page.goto('/');
+  const supported = await page.evaluate(() => document.fullscreenEnabled);
+  test.skip(!supported, 'this browser cannot go full screen');
+  await expect(page.getByRole('button', { name: 'Full screen' })).toBeVisible();
+  await page.getByRole('button', { name: 'Play against bots' }).click();
+  const view = page.viewportSize()!;
+  // on the sideways table it sits in the corner of the felt
+  test.skip(view.width < view.height, 'only the sideways table has the corner button');
+  // (the home screen stays underneath, hidden, with a button of its own)
+  await expect(page.getByTestId('fullscreen').filter({ visible: true })).toHaveCount(1);
+});
+
 test('the table fits the screen: nothing is cut off and nothing scrolls', async ({ page }) => {
   await startGame(page);
   const view = page.viewportSize()!;

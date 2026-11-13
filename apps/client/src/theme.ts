@@ -16,9 +16,13 @@ export const colors = {
   bolt: '#C9C2B4',
   rack: '#B07A3B',
   rackEdge: '#8A5C2A',
-  tile: '#FBF7EE',
+  tile: '#FFFCF5',
+  // A tile that is out of the game (a discard nobody can take): darker face, same strong ink.
+  tileGone: '#D8D1C2',
   tileBack: '#EDE6D6',
-  tileEdge: '#D9D0BE',
+  tileEdge: '#CFC5B0',
+  // The star on the printed joker.
+  star: '#7A3FC4',
   text: '#FFFFFF',
   textMuted: '#C9D2CC',
   accent: '#F2C14E',
@@ -31,10 +35,13 @@ export const colors = {
   cardText: '#1F2A24',
 } as const;
 
-/** Ink colour for each tile colour. Yellow is drawn as a deep amber so it reads on a cream tile. */
+/**
+ * Ink colour for each tile colour: deep, saturated and far apart, so a tile's colour is clear
+ * at a glance even when it is small. Yellow is a deep amber so it reads on a cream tile.
+ */
 export const tileInk: Record<Color, string> = {
-  red: '#D22B2B',
-  yellow: '#E08A00',
-  blue: '#1E6FD9',
-  black: '#1B1B1B',
+  red: '#D4001A',
+  yellow: '#D98A00',
+  blue: '#0A4BD6',
+  black: '#0D0D0D',
 };

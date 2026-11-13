@@ -46,6 +46,9 @@
       "/e2e/",
       "/dist/",
       "/test-utils/"
+    ],
+    "setupFiles": [
+      "<rootDir>/jest.setup.ts"
     ]
   }
 }

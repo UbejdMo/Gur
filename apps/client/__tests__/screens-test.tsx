@@ -1,7 +1,9 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import Home from '@/app/index';
 import { Table } from '@/components/Table';
+import { StyleSheet } from 'react-native';
 import { DiscardRow } from '@/components/DiscardRow';
+import { colors, tileInk } from '@/theme';
 import { ALMOST, READY, practiceGame, t, ts } from '../test-utils/deal';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), replace: jest.fn() } }));
@@ -114,6 +116,18 @@ describe('DiscardRow', () => {
     expect(screen.getByLabelText('blue 3')).toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('last-discard'));
     expect(onTake).toHaveBeenCalledTimes(1);
+  });
+
+  it('tiles that are out of the game keep their full colour on a darker face, not faded', async () => {
+    await render(<DiscardRow {...props} discards={ts('B1 R2')} last={null} takeable={false} onTake={jest.fn()} />);
+    for (const tile of screen.getAllByTestId('gone-discard')) {
+      const style = StyleSheet.flatten(tile.props.style as object) as { backgroundColor: string; opacity?: number };
+      expect(style.backgroundColor).toBe(colors.tileGone);
+      expect(style.opacity ?? 1).toBe(1);
+    }
+    // the number and the dot under it both carry the tile's colour
+    const blue = within(screen.getByLabelText('blue 1'));
+    expect(StyleSheet.flatten(blue.getByText('1').props.style as object)).toMatchObject({ color: tileInk.blue });
   });
 
   it('once the next player has drawn, every tile there is gone for good', async () => {
