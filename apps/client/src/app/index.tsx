@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { tileId } from '@gur/engine';
+import { FullscreenButton } from '@/components/FullscreenButton';
 import { Tile } from '@/components/Tile';
+import { inPhoneBrowser, useFullscreen } from '@/hooks/useFullscreen';
 import { colors } from '@/theme';
 
 const DECOR = [tileId('red', 7), tileId('yellow', 8), tileId('blue', 9), 104];
@@ -10,9 +13,24 @@ const DECOR = [tileId('red', 7), tileId('yellow', 8), tileId('blue', 9), 104];
 export default function Home() {
   const [aceHigh, setAceHigh] = useState(true);
   const [slowBots, setSlowBots] = useState(true);
+  const insets = useSafeAreaInsets();
+  const fullscreen = useFullscreen();
+  // In a phone's browser the address bar takes room the table needs: say how to get rid of it.
+  const [cramped] = useState(inPhoneBrowser);
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={[
+        styles.content,
+        {
+          paddingTop: 24 + insets.top,
+          paddingBottom: 24 + insets.bottom,
+          paddingLeft: 24 + insets.left,
+          paddingRight: 24 + insets.right,
+        },
+      ]}
+    >
       <Text style={styles.title} accessibilityRole="header">
         Gur
       </Text>
@@ -57,6 +75,15 @@ export default function Home() {
       >
         <Text style={styles.buttonText}>Play against bots</Text>
       </Pressable>
+
+      <FullscreenButton />
+      {cramped && !fullscreen.active && (
+        <Text style={styles.note} testID="install-tip">
+          {fullscreen.supported
+            ? 'For the biggest table, play full screen. Or add Gur to your home screen from the browser menu: it then opens like an app, without the address bar.'
+            : 'For a bigger table, add Gur to your home screen: tap Share, then "Add to Home Screen". It then opens like an app, without the address bar.'}
+        </Text>
+      )}
 
       <Text style={styles.note}>Playing with friends and online is coming next.</Text>
     </ScrollView>

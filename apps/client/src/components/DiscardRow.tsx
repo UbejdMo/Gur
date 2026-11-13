@@ -38,7 +38,7 @@ type Props = {
  * The tiles lying in front of one player, for everyone to see: the latest six that the player
  * before them discarded, oldest on the left. A discard is left for the next player only: they
  * can pick it up on that turn or never, and nobody else can. Tiles that were not taken stay
- * here, dimmed, so players can see which tiles are out of the game.
+ * here on a darker face, so players can see which tiles are out of the game.
  */
 export function DiscardRow({
   name,
@@ -85,8 +85,8 @@ export function DiscardRow({
               </View>
             </DragSource>
           ) : (
-            <View key={id} style={[styles.frame, styles.gone]}>
-              <Tile id={id} width={tileWidth} testID="gone-discard" wild={isRealJoker(id, joker)} />
+            <View key={id} style={styles.frame}>
+              <Tile id={id} width={tileWidth} testID="gone-discard" wild={isRealJoker(id, joker)} gone />
             </View>
           ),
         )}
@@ -119,6 +119,4 @@ const styles = StyleSheet.create({
   },
   frame: { borderRadius: 6, borderWidth: 1, borderColor: 'transparent' },
   takeable: { borderColor: colors.accent, backgroundColor: colors.accent },
-  // Tiles that can no longer be picked up.
-  gone: { opacity: 0.6 },
 });

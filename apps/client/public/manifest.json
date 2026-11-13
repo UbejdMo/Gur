@@ -1,0 +1,15 @@
+{
+  "name": "Gur",
+  "short_name": "Gur",
+  "description": "Tile rummy, the Kosovo way",
+  "start_url": ".",
+  "scope": ".",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "background_color": "#1C1F1E",
+  "theme_color": "#1C1F1E",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

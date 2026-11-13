@@ -1,8 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { handOf, tileId } from '@gur/engine';
 import { DiscardRow } from './DiscardRow';
+import { FullscreenButton } from './FullscreenButton';
 import { MiddlePile } from './MiddlePile';
 import { PlayerPanel } from './PlayerPanel';
 import { RACK_PAD, Rack } from './Rack';
@@ -39,7 +41,11 @@ export function Table({ onMenu, ...options }: Props) {
   const { game } = p;
   const { round } = game;
   const playing = game.status === 'playing';
-  const { width, height } = useWindowDimensions();
+  // The game uses the whole screen, so it keeps clear of a notch or rounded corners itself.
+  const screen = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const width = screen.width - insets.left - insets.right;
+  const height = screen.height - insets.top - insets.bottom;
   const wide = width >= 560 && width > height;
   // While a tile from the table is in the air, the table is lifted above the rack so it stays in view.
   const [lifted, setLifted] = useState(false);
@@ -278,7 +284,12 @@ export function Table({ onMenu, ...options }: Props) {
   );
 
   return (
-    <View style={styles.screen}>
+    <View
+      style={[
+        styles.screen,
+        { paddingTop: insets.top, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right },
+      ]}
+    >
       {wide ? (
         <View style={[styles.wideContent, { padding: pad }, short && styles.wideShort]}>
           {felt}
@@ -294,6 +305,10 @@ export function Table({ onMenu, ...options }: Props) {
             <View style={styles.rackSide}>
               <View style={[styles.rackSideFill, styles.rackSideEnd]}>{controls}</View>
             </View>
+          </View>
+          {/* In the empty corner of the felt, for browsers that can go full screen. */}
+          <View style={[styles.corner, { top: pad + (tight ? 8 : 16), right: pad + (tight ? 8 : 16) }]}>
+            <FullscreenButton compact />
           </View>
         </View>
       ) : (
@@ -322,6 +337,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.backdrop },
   wideContent: { flex: 1, gap: 12, width: '100%', maxWidth: 1280, alignSelf: 'center' },
   wideShort: { gap: 6 },
+  corner: { position: 'absolute' },
   // Your rack with a panel at each end: you and the status on the left, joker and buttons on the right.
   rackRow: { flexDirection: 'row', alignItems: 'stretch', justifyContent: 'center', gap: 8 },
   rackSide: { flex: 1, minWidth: 0 },

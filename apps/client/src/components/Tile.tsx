@@ -7,6 +7,8 @@ type Props = {
   id: TileId;
   /** Marks the real joker tiles for this round. */
   wild?: boolean;
+  /** Out of the game (a discard nobody can take any more): a darker face, the ink stays strong. */
+  gone?: boolean;
   size?: 'small' | 'regular';
   selected?: boolean;
   onPress?: () => void;
@@ -20,6 +22,7 @@ type Props = {
 export function Tile({
   id,
   wild = false,
+  gone = false,
   size = 'regular',
   selected = false,
   onPress,
@@ -35,11 +38,14 @@ export function Tile({
   const sized = width
     ? {
         box: { width, height: Math.round(width * 1.4), paddingTop: width * 0.12, paddingBottom: width * 0.12 },
-        text: { fontSize: Math.round(width * 0.55) },
-        dot: { width: width * 0.18, height: width * 0.18, borderRadius: width * 0.09 },
+        text: { fontSize: Math.round(width * 0.58), lineHeight: Math.round(width * 0.66) },
+        dot: { width: width * 0.24, height: width * 0.24, borderRadius: width * 0.12 },
       }
     : null;
 
+  // The dot under the number is filled with the tile's colour: a second, bigger patch of
+  // colour that tells red from yellow or blue from black even on a small tile.
+  const ink = tile.printedJoker ? colors.star : tileInk[tile.color!];
   const face = (
     <>
       {tile.printedJoker ? (
@@ -47,17 +53,21 @@ export function Tile({
           ★
         </Text>
       ) : (
-        <Text
-          selectable={false}
-          style={[styles.number, small && styles.numberSmall, sized?.text, { color: tileInk[tile.color!] }]}
-        >
+        <Text selectable={false} style={[styles.number, small && styles.numberSmall, sized?.text, { color: ink }]}>
           {tile.number}
         </Text>
       )}
-      <View style={[styles.dot, small && styles.dotSmall, sized?.dot]} />
+      <View style={[styles.dot, small && styles.dotSmall, sized?.dot, { backgroundColor: ink }]} />
     </>
   );
-  const style = [styles.tile, small && styles.small, sized?.box, wild && styles.wild, selected && styles.selected];
+  const style = [
+    styles.tile,
+    small && styles.small,
+    sized?.box,
+    gone && styles.gone,
+    wild && styles.wild,
+    selected && styles.selected,
+  ];
 
   if (onPress) {
     return (
@@ -100,12 +110,13 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   small: { width: 32, height: 44, paddingTop: 4, paddingBottom: 4 },
+  gone: { backgroundColor: colors.tileGone, borderColor: colors.tileGone },
   wild: { borderColor: colors.accent, borderWidth: 2 },
   selected: { transform: [{ translateY: -10 }], borderColor: colors.selected, borderWidth: 3 },
-  number: { fontSize: 22, fontWeight: '800' },
+  number: { fontSize: 23, fontWeight: '900' },
   numberSmall: { fontSize: 17 },
-  star: { fontSize: 22, color: colors.accent },
+  star: { fontSize: 22, color: colors.star },
   starSmall: { fontSize: 17 },
-  dot: { width: 8, height: 8, borderRadius: 4, borderWidth: 1, borderColor: colors.tileEdge },
-  dotSmall: { width: 6, height: 6, borderRadius: 3 },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  dotSmall: { width: 8, height: 8, borderRadius: 4 },
 });
