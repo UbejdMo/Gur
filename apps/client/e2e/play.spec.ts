@@ -211,6 +211,20 @@ test('discards stay on the table, and the last one can be dragged onto the rack'
   await expect(page.getByTestId('last-discard')).toHaveCount(0);
 });
 
+test('the indicator is not the middle: tapping it never draws a tile', async ({ page }) => {
+  await startGame(page);
+  test.skip(!(await readyToDiscard(page)), 'a bot closed before your first turn');
+  test.skip(!(await nextDraw(page)), 'the round ended before your second turn');
+
+  const count = await page.getByTestId('middle-count').textContent();
+  await page.getByTestId('indicator').click();
+  // It can only be taken when it completes your hand. Either way nothing comes off the middle.
+  const refused = page.getByTestId('message').filter({ hasText: /only take the indicator when it lets you close/ });
+  await expect(refused.or(page.getByTestId('indicator-taken'))).toBeVisible();
+  await expect(page.getByTestId('middle-count')).toHaveText(count!);
+  await expect(page.getByTestId('rack-tile')).toHaveCount((await refused.isVisible()) ? 14 : 15);
+});
+
 test('tap a tile, then the Discard button', async ({ page }) => {
   await startGame(page);
   test.skip(!(await readyToDiscard(page)), 'a bot closed before your first turn');

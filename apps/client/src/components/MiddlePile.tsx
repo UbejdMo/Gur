@@ -12,6 +12,12 @@ type Props = {
   /** The top tile was dragged and let go at this point on the screen. */
   onDropAt: (pageX: number, pageY: number) => void;
   onDragChange?: (dragging: boolean) => void;
+  /** A player has taken the indicator (to close with it), so it is no longer on the table. */
+  indicatorTaken?: boolean;
+  /** The indicator was tapped: you want to take it. Only legal when it completes your hand. */
+  onTakeIndicator: () => void;
+  /** The indicator was dragged and let go at this point on the screen. */
+  onIndicatorDropAt: (pageX: number, pageY: number) => void;
   /** Width of one tile in the row. */
   tileWidth: number;
   /** The most face-down stacks there is room for. */
@@ -23,6 +29,10 @@ type Props = {
 /**
  * The middle: a row of face-down stacks with the indicator turned face up at the end.
  * Tap it to draw when it's your turn, or drag the tile next to the indicator onto your rack.
+ *
+ * The indicator itself can be taken too, by tapping or dragging it, but only when it is the
+ * tile that completes your hand: you then have to close on that turn. The table gives no sign
+ * of when that is; spotting it is part of the game.
  */
 export function MiddlePile({
   count,
@@ -31,6 +41,9 @@ export function MiddlePile({
   onDraw,
   onDropAt,
   onDragChange,
+  indicatorTaken = false,
+  onTakeIndicator,
+  onIndicatorDropAt,
   tileWidth,
   maxStacks = 8,
   dense = false,
@@ -65,7 +78,18 @@ export function MiddlePile({
           );
         })}
         <View style={styles.indicator}>
-          <Tile id={indicator} width={tileWidth} testID="indicator" />
+          {indicatorTaken ? (
+            <View style={[styles.taken, { width: tileWidth, height: h }]} testID="indicator-taken" />
+          ) : (
+            <DragSource
+              enabled={canDraw}
+              onTap={onTakeIndicator}
+              onDrop={onIndicatorDropAt}
+              onDragChange={onDragChange}
+            >
+              <Tile id={indicator} width={tileWidth} testID="indicator" onPress={() => canDraw && onTakeIndicator()} />
+            </DragSource>
+          )}
         </View>
       </Pressable>
       <Text style={[styles.count, dense && styles.countDense]}>
@@ -77,6 +101,8 @@ export function MiddlePile({
 
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center', gap: 8 },
+  // Where the indicator stood, once a player has taken it.
+  taken: { borderRadius: 6, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.textMuted, opacity: 0.6 },
   wrapDense: { gap: 1 },
   rowDense: { padding: 3 },
   countDense: { fontSize: 10 },

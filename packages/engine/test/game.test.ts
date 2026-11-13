@@ -4,6 +4,7 @@ import {
   TILE_COUNT,
   acceptRestart,
   arrange,
+  canTakeIndicator,
   close,
   createGame,
   createGameWithDeal,
@@ -255,5 +256,91 @@ describe('rounds', () => {
     const best = Math.min(...totals);
     expect(g.matchWinners).toEqual(totals.flatMap((x, i) => (x === best ? [i] : [])));
     expect(() => nextRoundWithDeal(g, randomDeal(3, rng))).toThrow(RuleError);
+  });
+});
+
+describe('taking the indicator', () => {
+  // Black 13 is the indicator, so black 1 is the joker. One tile short: with a black 13 the
+  // 13s make a set (the joker fills in elsewhere) and red 8 is the spare tile.
+  const WAITING = 'R2 K2 Y2 K1 R13 B13 R8 K6 K7 K8 K9 K10 Y10 R10';
+  const CLOSED = ['R2 K2 Y2', 'K1 R13 B13 K13', 'K6 K7 K8 K9', 'K10 Y10 R10'].map(ts);
+  // The same, but the spare tile after taking the indicator is the joker itself.
+  const WAITING_JOKER = 'R2 K2 Y2 R13 B13 K6 K7 K8 K9 K10 Y10 R10 B10 K1';
+  // The other player: melds plus two loose 13s (26 points), and no black 1, which is the joker here.
+  const OTHER = 'B1b B2b B3b B5b B6b B7b K2b K3b K4b K5b K6b K7b B13b K13b';
+  // Two loose tiles: the indicator would not complete this hand.
+  const NOT_YET = 'R2 K2 Y2 K1 R13 B13 R8 Y4 K6 K7 K8 K10 Y10 R10';
+
+  /** Seat 1 starts and discards, so seat 0 is about to draw. */
+  function yourDraw(hand: string): Game {
+    const g = createGameWithDeal(SETTINGS, ['a', 'b'], 1, makeDeal('K13', [hand, OTHER], ['R1b', 'Y5b']));
+    return discard(g, 1, t('R1b'));
+  }
+
+  it('may be taken instead of drawing when it completes the hand', () => {
+    const g = yourDraw(WAITING);
+    expect(canTakeIndicator(g, 0)).toBe(true);
+    const taken = draw(g, 0, 'indicator');
+    expect(handOf(taken.players[0]!)).toContain(t('K13'));
+    expect(handOf(taken.players[0]!)).toHaveLength(15);
+    expect(taken.round).toMatchObject({ indicatorTakenBy: 0, phase: 'discard', current: 0, lastDiscard: null });
+    // nothing came off the middle, and the joker is still black 1
+    expect(taken.round.middle).toEqual(g.round.middle);
+    expect(taken.round.joker).toEqual({ color: 'black', number: 1 });
+  });
+
+  it('then the player closes as usual, for -10', () => {
+    let g = draw(yourDraw(WAITING), 0, 'indicator');
+    g = close(arrange(g, 0, [...CLOSED, ts('R8')]), 0, t('R8'));
+    expect(g.results[0]).toMatchObject({ reason: 'close', winners: [0], double: false, scores: [-10, 26] });
+  });
+
+  it('closing by discarding the real joker is still a double', () => {
+    let g = draw(yourDraw(WAITING_JOKER), 0, 'indicator');
+    g = arrange(g, 0, [...['R2 K2 Y2', 'R13 B13 K13', 'K6 K7 K8 K9', 'K10 Y10 R10 B10'].map(ts), ts('K1')]);
+    g = close(g, 0, t('K1'));
+    expect(g.results[0]).toMatchObject({ winners: [0], double: true, scores: [-20, 52] });
+  });
+
+  it('can only be taken to close: the player cannot just discard afterwards', () => {
+    const g = draw(yourDraw(WAITING), 0, 'indicator');
+    expect(() => discard(g, 0, t('R8'))).toThrow(/have to close/);
+    // and a rack that is not laid out still does not close
+    expect(() => close(g, 0, t('R8'))).toThrow(/Connect your tiles/);
+  });
+
+  it('cannot be taken when it would not complete the hand', () => {
+    const g = yourDraw(NOT_YET);
+    expect(canTakeIndicator(g, 0)).toBe(false);
+    expect(() => draw(g, 0, 'indicator')).toThrow(/only take the indicator when it lets you close/);
+    // the ordinary draws still work
+    expect(handOf(draw(g, 0, 'middle').players[0]!)).toHaveLength(15);
+  });
+
+  it('cannot be taken out of turn, after drawing, or twice', () => {
+    const g = yourDraw(WAITING);
+    expect(canTakeIndicator(g, 1)).toBe(false);
+    expect(() => draw(g, 1, 'indicator')).toThrow(RuleError);
+    const drawn = draw(g, 0, 'middle');
+    expect(canTakeIndicator(drawn, 0)).toBe(false);
+    expect(() => draw(drawn, 0, 'indicator')).toThrow(RuleError);
+    const taken = draw(g, 0, 'indicator');
+    expect(canTakeIndicator(taken, 0)).toBe(false);
+  });
+
+  it('when time runs out after taking it, the game closes for the player, without a double by accident', () => {
+    const g = timeoutMove(draw(yourDraw(WAITING_JOKER), 0, 'indicator'));
+    expect(g.results[0]).toMatchObject({ reason: 'close', winners: [0], double: false, scores: [-10, 26] });
+    // with only the joker to spare, the close is a double
+    const hand = 'R2 K2 Y2 R13 B13 K6 K7 K8 K9 K10 Y10 R10 B10 K1b';
+    const only = createGameWithDeal(SETTINGS, ['a', 'b'], 1, makeDeal('K13', [hand, OTHER], ['R1b']));
+    expect(canTakeIndicator(discard(only, 1, t('R1b')), 0)).toBe(true);
+  });
+
+  it('the timer never takes the indicator by itself', () => {
+    const g = timeoutMove(yourDraw(WAITING));
+    expect(g.status).toBe('playing');
+    expect(g.round.indicatorTakenBy).toBeNull();
+    expect(g.round.current).toBe(1);
   });
 });

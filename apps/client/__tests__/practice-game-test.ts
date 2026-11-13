@@ -3,7 +3,7 @@ import { handOf } from '@gur/engine';
 import { usePracticeGame } from '@/game/usePracticeGame';
 import { chooseClosingTile, closingTiles, initialState, practiceReducer } from '@/game/practiceReducer';
 import { colsOf, layoutGroups, sameGroups } from '@/game/rackLayout';
-import { ALMOST, READY, practiceGame, t } from '../test-utils/deal';
+import { ALMOST, FILLER, NEEDS_K13, READY, practiceGame, t } from '../test-utils/deal';
 
 beforeEach(() => jest.useFakeTimers());
 afterEach(() => jest.useRealTimers());
@@ -277,5 +277,68 @@ describe('usePracticeGame', () => {
     await act(async () => result.current.playAgain());
     expect(result.current.game.status).toBe('playing');
     expect(result.current.hand.sort()).toEqual([...READY.split(' ').map(t), t('Y4b')].sort());
+  });
+});
+
+describe('taking the indicator', () => {
+  /** Black 13 is the indicator. Bot 3 starts and discards, so it is your turn to draw. */
+  function yourDraw(you: string) {
+    const s = initialState(practiceGame({ you, indicator: 'K13', starter: 3 }));
+    return practiceReducer(s, { type: 'bot' });
+  }
+
+  it('you can take it when it completes your hand, put it where you want, and close', () => {
+    let s = yourDraw(NEEDS_K13);
+    expect(s.game.round.current).toBe(0);
+    // set the two 13s apart from the run, with room for the third beside them
+    s = practiceReducer(s, { type: 'drop', tile: t('Y13'), slot: 20 });
+    s = practiceReducer(s, { type: 'drop', tile: t('B13'), slot: 21 });
+    const middle = s.game.round.middle.length;
+    s = practiceReducer(s, { type: 'takeIndicator', at: { slot: 22, side: 'left' } });
+    expect(s.message).toBeNull();
+    expect(s.layout[22]).toBe(t('K13'));
+    expect(s.log).toBe('You took the indicator');
+    expect(s.game.round).toMatchObject({ indicatorTakenBy: 0, phase: 'discard' });
+    expect(s.game.round.middle).toHaveLength(middle);
+
+    // a run of seven, a run of five and three 13s: an end tile of a run is the one to spare
+    expect(closingTiles(s.game)).toEqual(expect.arrayContaining([t('R1'), t('R7'), t('K5'), t('K9')]));
+    const closed = practiceReducer(s, { type: 'dropUp', tile: t('R7') });
+    expect(closed.game.results[0]).toMatchObject({ reason: 'close', winners: [0], double: false });
+  });
+
+  it('after taking it you have to close: a plain discard is refused', () => {
+    let s = yourDraw(NEEDS_K13);
+    s = practiceReducer(s, { type: 'takeIndicator' });
+    // the rack is not connected yet, so dragging a tile up would only discard it
+    const refused = practiceReducer(s, { type: 'dropUp', tile: t('R4') });
+    expect(refused.message).toMatch(/have to close/);
+    expect(refused.game.status).toBe('playing');
+    expect(refused.game.round.lastDiscard).toBeNull();
+    expect(practiceReducer(s, { type: 'discard', tile: t('R4') }).message).toMatch(/have to close/);
+  });
+
+  it('you cannot take it when it would not complete your hand', () => {
+    const s = yourDraw(ALMOST);
+    const next = practiceReducer(s, { type: 'takeIndicator' });
+    expect(next.message).toMatch(/only take the indicator when it lets you close/);
+    expect(next.game).toBe(s.game);
+    expect(next.layout).toEqual(s.layout);
+  });
+
+  it('if your time runs out after taking it, the game closes for you', () => {
+    let s = yourDraw(NEEDS_K13);
+    s = practiceReducer(s, { type: 'takeIndicator' });
+    s = practiceReducer(s, { type: 'timeout' });
+    expect(s.game.results[0]).toMatchObject({ reason: 'close', winners: [0] });
+  });
+
+  it('says so when a bot wins that way', () => {
+    // you start and discard; Bot 1 holds the hand that needs the black 13
+    let s = initialState(practiceGame({ you: FILLER[0], bot1: NEEDS_K13, indicator: 'K13' }));
+    s = practiceReducer(s, { type: 'discard', tile: t('R9b') });
+    s = practiceReducer(s, { type: 'bot' });
+    expect(s.log).toBe('Bot 1 took the indicator and closed');
+    expect(s.game.results[0]).toMatchObject({ winners: [1] });
   });
 });

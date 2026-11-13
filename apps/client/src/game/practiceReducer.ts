@@ -36,6 +36,7 @@ export type PracticeAction =
   | { type: 'dropUp'; tile: TileId }
   | { type: 'drawMiddle'; at?: Place }
   | { type: 'takeDiscard'; at?: Place }
+  | { type: 'takeIndicator'; at?: Place }
   | { type: 'resize'; cols: number }
   | { type: 'discard'; tile?: TileId }
   | { type: 'close'; tile?: TileId }
@@ -130,6 +131,7 @@ function play(state: PracticeState, fn: (g: Game) => Game, log: string, at?: Pla
 function describeBotTurn(before: Game, after: Game): string {
   const seat = before.round.current;
   const name = before.players[seat]!.id;
+  if (after.round.indicatorTakenBy === seat) return `${name} took the indicator and closed`;
   if (after.results.length > before.results.length) return `${name} closed`;
   // The middle didn't shrink, so the bot took the last discard instead.
   const took = before.round.lastDiscard !== null && after.round.middle.length === before.round.middle.length;
@@ -162,6 +164,9 @@ export function practiceReducer(state: PracticeState, action: PracticeAction): P
       return play(state, (g) => draw(g, YOU, 'middle'), 'You drew from the middle', action.at);
     case 'takeDiscard':
       return play(state, (g) => draw(g, YOU, 'discard'), 'You picked up the last discarded tile', action.at);
+    case 'takeIndicator':
+      // Only allowed when it completes your hand; the engine says so otherwise.
+      return play(state, (g) => draw(g, YOU, 'indicator'), 'You took the indicator', action.at);
     case 'discard': {
       const tile = action.tile ?? state.selected;
       return tile === null ? state : play(state, (g) => discard(g, YOU, tile), `You discarded ${describeTile(tile)}`);

@@ -90,6 +90,7 @@ export function usePracticeGame({
       dropUp: (tile: TileId) => dispatch({ type: 'dropUp', tile }),
       drawMiddle: (at?: Place) => dispatch({ type: 'drawMiddle', at }),
       takeDiscard: (at?: Place) => dispatch({ type: 'takeDiscard', at }),
+      takeIndicator: (at?: Place) => dispatch({ type: 'takeIndicator', at }),
       discard: (tile?: TileId) => dispatch({ type: 'discard', tile }),
       close: (tile?: TileId) => dispatch({ type: 'close', tile }),
     }),
@@ -106,7 +107,9 @@ export function usePracticeGame({
     secondsLeft,
     yourTurn,
     canDiscardNow,
-    canDiscard: canDiscardNow && selected !== null,
+    // After taking the indicator the only way to play a tile is to close.
+    canDiscard: canDiscardNow && selected !== null && round.indicatorTakenBy !== YOU,
+    tookIndicator: status === 'playing' && round.indicatorTakenBy === YOU,
     canClose: canCloseWith.size > 0,
     canCloseWith,
     lastDiscardTakeable: yourTurn && round.phase === 'draw' && round.lastDiscard !== null,
