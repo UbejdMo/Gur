@@ -4,11 +4,11 @@ Gur is a closed-hand tile rummy game, played the way it is in Kosovo, for web, A
 
 ## Layout
 
-| Path              | What it is                                                                                                                                                                                        |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/engine` | The rules: tiles, joker, melds, closing hands, turns, scoring, plus simple bots (`src/bot.ts`). Pure TypeScript, no dependencies. Used by the server (authoritative) and the app (offline bots).  |
-| `apps/client`     | Expo app (Expo Router) for web, Android and iOS. Screens in `src/app/`, components in `src/components/`, game state hooks in `src/game/`. See `apps/client/AGENTS.md` for Expo-specific guidance. |
-| `apps/server`     | Node game server: lobbies, matchmaking, turn timer (not created yet).                                                                                                                             |
+| Path              | What it is                                                                                                                                                                                                                       |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/engine` | The rules: tiles, joker, melds, closing hands, turns, scoring, plus simple bots (`src/bot.ts`). Pure TypeScript, no dependencies. Used by the server (authoritative) and the app (offline bots).                                 |
+| `apps/client`     | Expo app (Expo Router) for web, Android and iOS. Screens in `src/app/`, components in `src/components/`, game state hooks in `src/game/`. See `apps/client/AGENTS.md` for Expo-specific guidance.                                |
+| `apps/server`     | Node game server (Socket.IO): lobbies with codes, authoritative play, turn timer, bots for empty seats. `src/lobby.ts` holds the logic, `src/server.ts` the network, `src/protocol.ts` the messages (the app imports its types). |
 
 ## Commands
 
@@ -19,6 +19,7 @@ Run from the repo root. Node 22 and pnpm 9 (via `corepack enable`).
 - `pnpm test`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm format`
 - One package: `pnpm --filter @gur/engine test`
 - `pnpm dev` builds the engine and starts the Expo dev server (press `w` for web, or scan the QR code with Expo Go)
+- `pnpm dev:server` builds the engine and starts the game server on port 3001, restarting when its code changes
 - `pnpm test:e2e` builds the web app and runs the Playwright browser tests (desktop, phone upright and phone sideways)
 - Add Expo packages from `apps/client` with `pnpm exec expo install <package>`, never plain `pnpm add`, so versions match the Expo SDK.
 - Stay on TypeScript 6.x until typescript-eslint supports TypeScript 7. Keep `@types/node` on 22.x to match Node 22. Dependabot is configured to skip both, and to skip Expo-pinned packages (upgrade those with `pnpm exec expo install --fix`).
@@ -34,7 +35,7 @@ Run from the repo root. Node 22 and pnpm 9 (via `corepack enable`).
   - The app shows a two-row rack (12 slots a row on an upright phone, up to 14 sideways, dealt 7 on top and 7 below); tiles side by side form a group, and the engine's arrangement always mirrors the rack. A tile dropped on another slides in beside it; tiles never swap.
   - The indicator can be taken instead of drawing, but only when it completes the hand (the 15 tiles then hold a closing hand), and the player must close on that turn. The app never hints at when that is. If their time runs out after taking it, the game closes for them.
   - 12-13-1 is a table option; 13-1-2 is never valid.
-- The server is authoritative: clients send intentions, the server validates them with `@gur/engine`. Never trust a client's game state.
+- The server is authoritative: clients send intentions, the server validates them with `@gur/engine`. Never trust a client's game state. A player is only ever sent their own view (`playerView` in the engine): never another rack, never the order of the middle. Anything a player may be told is refused with a `LobbyError`, whose message is shown to that player.
 - Engine functions are pure: they return a new state and never mutate their input. Illegal moves throw `RuleError`.
 - The app imports the engine's built output, so the engine must be built first (`pnpm dev` and Turbo do this).
 - Every screen element a test needs gets a `testID` or an accessibility label; tests query by role and label first.

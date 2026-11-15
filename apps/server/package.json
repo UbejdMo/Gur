@@ -1,0 +1,33 @@
+{
+  "name": "@gur/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Gur game server: lobbies with codes, authoritative play, turn timer",
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    "./protocol": {
+      "types": "./src/protocol.ts"
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --external:socket.io --sourcemap --outfile=dist/index.js",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@gur/engine": "workspace:*",
+    "socket.io": "4.8.4"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@vitest/coverage-v8": "5.1.0",
+    "esbuild": "0.28.2",
+    "socket.io-client": "4.8.4",
+    "tsx": "4.23.15",
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
+  }
+}
