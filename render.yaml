@@ -1,0 +1,18 @@
+# Describes the game server for Render (https://render.com): New > Blueprint > pick this repo.
+# Free plan: the server sleeps after 15 minutes without traffic and takes about a minute to wake.
+services:
+  - type: web
+    name: gur-server
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    # Deploy only after CI has passed on main.
+    autoDeployTrigger: checksPass
+    buildCommand: pnpm install --frozen-lockfile --filter "@gur/server..." && pnpm --filter "@gur/server..." build
+    startCommand: node apps/server/dist/index.js
+    healthCheckPath: /health
+    envVars:
+      # The web game on GitHub Pages, plus the app running on a developer's computer.
+      - key: ALLOWED_ORIGINS
+        value: https://ubejdmo.github.io,http://localhost:8081

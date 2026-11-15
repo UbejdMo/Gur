@@ -18,13 +18,15 @@ pnpm check
 
 To run the app: `pnpm dev`, then press `w` to open it in the browser, or scan the QR code with the Expo Go app on your phone.
 
+To run the game server on your own computer: `pnpm dev:server` (it listens on port 3001).
+
 ## Packages
 
 | Package                              | Status                                               |
 | ------------------------------------ | ---------------------------------------------------- |
 | [`packages/engine`](packages/engine) | Rules engine and bots, with tests                    |
 | [`apps/client`](apps/client)         | Expo app for web, Android and iOS: play against bots |
-| `apps/server`                        | Planned: game server for lobbies and online play     |
+| [`apps/server`](apps/server)         | Game server: lobbies with codes, online play         |
 
 ## How changes get in
 

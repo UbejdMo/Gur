@@ -16,7 +16,8 @@
     "format:check": "prettier --check .",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "test:e2e": "turbo run test:e2e",
-    "dev": "turbo run build --filter=@gur/engine && pnpm --filter @gur/client start"
+    "dev": "turbo run build --filter=@gur/engine && pnpm --filter @gur/client start",
+    "dev:server": "turbo run build --filter=@gur/engine && pnpm --filter @gur/server dev"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

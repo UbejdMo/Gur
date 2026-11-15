@@ -4,3 +4,4 @@ export * from './hand';
 export * from './arrange';
 export * from './game';
 export * from './bot';
+export * from './view';
