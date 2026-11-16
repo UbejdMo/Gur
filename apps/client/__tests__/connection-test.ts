@@ -41,7 +41,7 @@ function memoryStore(initial: Record<string, string> = {}): SessionStore & { dat
 const lobbyState = (over: Partial<LobbyState> = {}): LobbyState => ({
   code: 'ABCDE',
   you: 0,
-  members: [{ name: 'Ana', bot: false, connected: true, host: true }],
+  members: [{ name: 'Ana', bot: false, connected: true, host: true, avatarUrl: null, publicId: null }],
   settings: { aceHigh: true, rounds: 1, fillWithBots: false },
   game: null,
   turnEndsAt: null,
@@ -50,13 +50,19 @@ const lobbyState = (over: Partial<LobbyState> = {}): LobbyState => ({
   ...over,
 });
 
-function setup(saved: Record<string, string> = {}) {
+/** Lets the connection finish looking up the sign-in token, which it does before it sends. */
+async function settle() {
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+}
+
+function setup(saved: Record<string, string> = {}, getToken?: () => Promise<string | null>) {
   const socket = new FakeSocket();
   const store = memoryStore(saved);
   const connection = new Connection(
     () => socket,
     store,
     () => 49_000,
+    getToken,
   );
   const seen: string[] = [];
   connection.subscribe(() => seen.push(connection.get().status));
@@ -70,6 +76,7 @@ describe('the connection to the game server', () => {
     const asked = connection.create('  Ana ', { rounds: 3 });
     expect(connection.get().status).toBe('connecting');
     socket.fire('connect');
+    await settle();
     expect(connection.get().status).toBe('online');
     expect(socket.last('create').payload).toEqual({ name: '  Ana ', settings: { rounds: 3 } });
     socket.last('create').reply({ ok: true, code: 'ABCDE', memberId: 'key-1' });
@@ -88,10 +95,27 @@ describe('the connection to the game server', () => {
     const { socket, store, connection } = setup();
     const asked = connection.join('zzzzz', 'Ben');
     socket.fire('connect');
+    await settle();
     socket.last('join').reply({ ok: false, error: 'No lobby has that code. Check it and try again' });
     expect(await asked).toEqual({ ok: false, error: 'No lobby has that code. Check it and try again' });
     expect(store.data.has('gur.session')).toBe(false);
     expect(connection.hasSavedSession()).toBe(false);
+  });
+
+  it('sends the sign-in token of a player with an account, and none for a guest', async () => {
+    const signedIn = setup({}, () => Promise.resolve('token-1'));
+    void signedIn.connection.create('Ana');
+    await settle();
+    expect(signedIn.socket.last('create').payload).toEqual({ name: 'Ana', settings: undefined, token: 'token-1' });
+    void signedIn.connection.join('ABCDE', 'Ana');
+    await settle();
+    expect(signedIn.socket.last('join').payload).toEqual({ code: 'ABCDE', name: 'Ana', token: 'token-1' });
+
+    // a sign-in that cannot be read is no reason not to play: the player goes in as a guest
+    const broken = setup({}, () => Promise.reject(new Error('storage is blocked')));
+    void broken.connection.join('ABCDE', 'Ben');
+    await settle();
+    expect(broken.socket.last('join').payload).toEqual({ code: 'ABCDE', name: 'Ben' });
   });
 
   it('sends lobby and game requests as they are', async () => {
@@ -117,6 +141,7 @@ describe('the connection to the game server', () => {
     const { socket, connection, seen } = setup();
     const asked = connection.join('ABCDE', 'Ben');
     socket.fire('connect');
+    await settle();
     socket.last('join').reply({ ok: true, code: 'ABCDE', memberId: 'key-2' });
     await asked;
     socket.fire('state', lobbyState());
@@ -134,6 +159,7 @@ describe('the connection to the game server', () => {
     const { socket, store, connection } = setup();
     const asked = connection.join('ABCDE', 'Ben');
     socket.fire('connect');
+    await settle();
     socket.last('join').reply({ ok: true, code: 'ABCDE', memberId: 'key-2' });
     await asked;
     socket.fire('state', lobbyState());
@@ -174,6 +200,7 @@ describe('the connection to the game server', () => {
     const { socket, store, connection } = setup();
     const asked = connection.create('Ana');
     socket.fire('connect');
+    await settle();
     socket.last('create').reply({ ok: true, code: 'ABCDE', memberId: 'key-1' });
     await asked;
     socket.fire('state', lobbyState());

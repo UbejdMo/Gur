@@ -18,4 +18,6 @@ Screens live in `src/app/` (each file is a route), shared components in `src/com
 
 Both produce a `TableModel` (`src/game/tableModel.ts`), and `GameTable` draws it. The table seats two to four players.
 
+- **Accounts** (`src/account/`): signing in with Google is optional. `account.ts` holds who you are (name, eight-digit ID, picture) for the whole app; `supabaseBackend.ts` is the only file that talks to Supabase. Without a Supabase project in `config.ts`, nothing about signing in is shown. Setting it up: [`docs/sign-in-setup.md`](../../docs/sign-in-setup.md).
+
 The server's address is in `src/online/config.ts`. To use a server on your own computer, start it with `pnpm dev:server` and the app with `EXPO_PUBLIC_SERVER_URL=http://localhost:3001 pnpm dev`.

@@ -109,6 +109,7 @@ export function GameTable({ table: p, overlay }: Props) {
         key={seat}
         name={names[seat]!}
         seat={seat}
+        avatarUrl={p.avatars?.[seat] ?? null}
         tileCount={view.players[seat]!.tileCount}
         points={view.players[seat]!.total}
         isTurn={playing && round.current === seat}

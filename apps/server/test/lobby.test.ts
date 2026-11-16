@@ -48,8 +48,8 @@ describe('joining', () => {
     const state = lobby.stateFor(ben);
     expect(state).toMatchObject({ code: 'ABCDE', you: 1, game: null, turnEndsAt: null, nextRoundAt: null });
     expect(state.members).toEqual([
-      { name: 'Ana', bot: false, connected: true, host: true },
-      { name: 'Ben', bot: false, connected: true, host: false },
+      { name: 'Ana', bot: false, connected: true, host: true, avatarUrl: null, publicId: null },
+      { name: 'Ben', bot: false, connected: true, host: false, avatarUrl: null, publicId: null },
     ]);
     expect(lobby.stateFor(ana).you).toBe(0);
     expect(lobby.memberIds()).toEqual([ana, ben]);
@@ -84,11 +84,47 @@ describe('joining', () => {
     const ana = lobby.join('Ana');
     const ben = lobby.join('Ben');
     lobby.leave(ana);
-    expect(lobby.stateFor(ben).members).toEqual([{ name: 'Ben', bot: false, connected: true, host: true }]);
+    expect(lobby.stateFor(ben).members).toEqual([
+      { name: 'Ben', bot: false, connected: true, host: true, avatarUrl: null, publicId: null },
+    ]);
     expect(() => lobby.stateFor(ana)).toThrow(/not in this lobby/);
     expect(() => lobby.leave(ana)).toThrow(LobbyError);
     lobby.leave(ben);
     expect(lobby.abandoned).toBe(true);
+  });
+});
+
+describe('players with an account', () => {
+  const ana = { userId: 'user-ana', username: 'AnaK', publicId: '48213377', avatarUrl: 'https://example.com/ana.png' };
+
+  it('go by their profile name and show their picture and id; guests show neither', () => {
+    const { lobby } = makeLobby();
+    const id = lobby.join('whatever they typed', ana);
+    lobby.join('Ben');
+    expect(lobby.stateFor(id).members).toEqual([
+      { name: 'AnaK', bot: false, connected: true, host: true, avatarUrl: ana.avatarUrl, publicId: '48213377' },
+      { name: 'Ben', bot: false, connected: true, host: false, avatarUrl: null, publicId: null },
+    ]);
+  });
+
+  it('are found again by their account, until they leave', () => {
+    const { lobby } = makeLobby();
+    const id = lobby.join('', ana);
+    const guest = lobby.join('Ben');
+    expect(lobby.seatOfAccount('user-ana')).toBe(id);
+    expect(lobby.seatOfAccount('user-nobody')).toBeNull();
+    lobby.start(id);
+    expect(lobby.seatOfAccount('user-ana')).toBe(id);
+    lobby.leave(id);
+    expect(lobby.seatOfAccount('user-ana')).toBeNull();
+    expect(lobby.has(guest)).toBe(true);
+  });
+
+  it('a guest who took the name first keeps it: the account holder gets a number', () => {
+    const { lobby } = makeLobby();
+    lobby.join('anak');
+    const id = lobby.join('', ana);
+    expect(lobby.stateFor(id).members.map((m) => m.name)).toEqual(['anak', 'AnaK 2']);
   });
 });
 
@@ -353,7 +389,9 @@ describe('rounds and the end of the match', () => {
     lobby.next(ana);
     const back = lobby.stateFor(ana);
     expect(back.game).toBeNull();
-    expect(back.members).toEqual([{ name: 'Ana', bot: false, connected: true, host: true }]);
+    expect(back.members).toEqual([
+      { name: 'Ana', bot: false, connected: true, host: true, avatarUrl: null, publicId: null },
+    ]);
     // and a new game can start
     lobby.start(ana);
     expect(lobby.stateFor(ana).game!.status).toBe('playing');

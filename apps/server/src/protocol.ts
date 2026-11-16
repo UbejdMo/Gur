@@ -24,6 +24,9 @@ export interface MemberView {
   connected: boolean;
   /** The player who created the lobby: they choose the options and start the game. */
   host: boolean;
+  /** Signed-in players only: their picture and the eight-digit id friends can add them by. */
+  avatarUrl: string | null;
+  publicId: string | null;
 }
 
 /** Everything one player sees: the lobby, and their view of the game once it has started. */
@@ -58,10 +61,18 @@ type Reply<T = unknown> = (answer: Ack<T>) => void;
 export interface ClientToServerEvents {
   /** Open a new lobby. `memberId` is your key to this lobby: keep it to get back in after a dropped connection. */
   create: (
-    request: { name: string; settings?: Partial<LobbySettings> },
+    request: { name: string; settings?: Partial<LobbySettings>; token?: string | null },
     reply: Reply<{ code: string; memberId: string }>,
   ) => void;
-  join: (request: { code: string; name: string }, reply: Reply<{ code: string; memberId: string }>) => void;
+  /**
+   * `token` is the sign-in token of a player with an account. With it the server uses their
+   * profile's name and picture instead of `name`, and puts them back in their own seat if
+   * they are already in this lobby (from another device, say).
+   */
+  join: (
+    request: { code: string; name: string; token?: string | null },
+    reply: Reply<{ code: string; memberId: string }>,
+  ) => void;
   /** Come back after losing the connection. */
   rejoin: (request: { code: string; memberId: string }, reply: Reply) => void;
   /** Host only, before the game starts. */

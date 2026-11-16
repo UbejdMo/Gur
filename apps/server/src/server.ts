@@ -12,7 +12,7 @@ import type { Socket } from 'socket.io';
 import { Lobbies } from './lobbies';
 import type { LobbiesConfig } from './lobbies';
 import { LobbyError } from './lobby';
-import type { Lobby } from './lobby';
+import type { Lobby, SignedInPlayer } from './lobby';
 import type { Ack, ClientToServerEvents, ServerToClientEvents } from './protocol';
 
 /** Which lobby and which player a connection speaks for. */
@@ -27,6 +27,11 @@ export interface GameServerConfig extends Omit<LobbiesConfig, 'onChange'> {
   corsOrigin?: string | string[];
   /** How often abandoned lobbies are cleared out. */
   sweepEveryMs?: number;
+  /**
+   * Checks a player's sign-in token and returns who they are, or null when it is not valid.
+   * Without it the server has no accounts: everybody plays as a guest under the name they type.
+   */
+  verify?: (token: string) => Promise<SignedInPlayer | null>;
 }
 
 export interface GameServer {
@@ -56,19 +61,31 @@ export function createGameServer(config: GameServerConfig = {}): GameServer {
   const lobbies = new Lobbies({ ...config, onChange: send });
 
   /** Runs a request and answers it; a refusal goes back as words, anything else is a server fault. */
-  const answer = <T>(reply: unknown, run: () => T) => {
+  const answer = <T>(reply: unknown, run: () => T | Promise<T>) => {
     const respond = typeof reply === 'function' ? (reply as (a: Ack<T>) => void) : () => {};
-    try {
-      const extra = run();
-      respond({ ok: true, ...extra } as Ack<T>);
-    } catch (e) {
+    const refuse = (e: unknown) => {
       if (e instanceof LobbyError) {
         respond({ ok: false, error: e.message });
       } else {
         console.error(e);
         respond({ ok: false, error: 'Something went wrong on the server' });
       }
+    };
+    try {
+      const result = run();
+      if (result instanceof Promise) result.then((extra) => respond({ ok: true, ...extra } as Ack<T>), refuse);
+      else respond({ ok: true, ...result } as Ack<T>);
+    } catch (e) {
+      refuse(e);
     }
+  };
+
+  /** Who a request comes from, when it carries a sign-in token. Guests carry none. */
+  const identify = async (token: unknown): Promise<SignedInPlayer | undefined> => {
+    if (token === undefined || token === null || token === '' || !config.verify) return undefined;
+    const player = typeof token === 'string' && token.length < 5000 ? await config.verify(token) : null;
+    if (!player) throw new LobbyError('Your sign-in has expired. Please sign in again');
+    return player;
   };
 
   /** The lobby and player this connection speaks for. */
@@ -107,10 +124,11 @@ export function createGameServer(config: GameServerConfig = {}): GameServer {
 
   io.on('connection', (socket: GameSocket) => {
     socket.on('create', (request, reply) =>
-      answer(reply, () => {
+      answer(reply, async () => {
+        const player = await identify(request?.token);
         release(socket, true);
         const lobby = lobbies.create();
-        const memberId = lobby.join(request?.name);
+        const memberId = lobby.join(request?.name, player);
         if (request?.settings) lobby.setSettings(memberId, request.settings);
         sit(socket, lobby, memberId);
         return { code: lobby.code, memberId };
@@ -118,10 +136,16 @@ export function createGameServer(config: GameServerConfig = {}): GameServer {
     );
 
     socket.on('join', (request, reply) =>
-      answer(reply, () => {
+      answer(reply, async () => {
+        lobbies.find(request?.code);
+        const player = await identify(request?.token);
+        // Checking the sign-in took a moment: look the lobby up again, it may be gone.
         const lobby = lobbies.find(request?.code);
-        release(socket, true);
-        const memberId = lobby.join(request?.name);
+        // A signed-in player who is already in this lobby takes their own seat again
+        // (they opened the game on another device, or lost their key to the lobby).
+        const seat = player ? lobby.seatOfAccount(player.userId) : null;
+        if (seat !== socket.data.memberId) release(socket, true);
+        const memberId = seat ?? lobby.join(request?.name, player);
         sit(socket, lobby, memberId);
         return { code: lobby.code, memberId };
       }),

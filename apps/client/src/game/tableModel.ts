@@ -14,6 +14,8 @@ export type TableModel = {
   view: PlayerView;
   /** The name shown for each seat. */
   names: readonly string[];
+  /** A picture for each seat, where the player has one (signed-in players, online). */
+  avatars?: readonly (string | null)[];
   /** Your rack, slot by slot. */
   layout: Layout;
   selected: TileId | null;

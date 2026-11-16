@@ -54,7 +54,14 @@ function lobby(over: Partial<LobbyState> = {}): LobbyState {
   return {
     code: 'WRCCS',
     you: 0,
-    members: NAMES.map((name, i) => ({ name, bot: false, connected: true, host: i === 0 })),
+    members: NAMES.map((name, i) => ({
+      name,
+      bot: false,
+      connected: true,
+      host: i === 0,
+      avatarUrl: null,
+      publicId: null,
+    })),
     settings: { aceHigh: true, rounds: 1, fillWithBots: false },
     game: null,
     turnEndsAt: null,
@@ -154,7 +161,9 @@ describe('the waiting room', () => {
   });
 
   it('alone, the host is told what is missing; with bots the empty seats say so', async () => {
-    const alone = lobby({ members: [{ name: 'Ana', bot: false, connected: true, host: true }] });
+    const alone = lobby({
+      members: [{ name: 'Ana', bot: false, connected: true, host: true, avatarUrl: null, publicId: null }],
+    });
     const onStart = jest.fn(async (): Promise<Ack> => ({ ok: true }));
     const view = await render(<LobbyRoom lobby={alone} onSettings={ok} onStart={onStart} onLeave={jest.fn()} />);
     expect(screen.getByText(/You need at least 2 players/)).toBeOnTheScreen();

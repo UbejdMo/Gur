@@ -1,10 +1,12 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { colors } from '@/theme';
 
 type Props = {
   name: string;
   /** The player's seat: it picks their colour. */
   seat: number;
+  /** Their picture, if they have one; otherwise a coloured badge with their initial. */
+  avatarUrl?: string | null;
   tileCount: number;
   points: number;
   isTurn: boolean;
@@ -36,6 +38,7 @@ export function initialOf(name: string): string {
 export function PlayerPanel({
   name,
   seat,
+  avatarUrl,
   tileCount,
   points,
   isTurn,
@@ -67,9 +70,19 @@ export function PlayerPanel({
           { backgroundColor: color },
         ]}
       >
-        <Text style={[styles.initial, (compact || small) && styles.initialCompact, tiny && styles.initialTiny]}>
-          {you ? 'You' : initialOf(name)}
-        </Text>
+        {/* Your own badge keeps saying "You": on the one-line panel it is the only thing that does. */}
+        {avatarUrl && !you ? (
+          <Image
+            source={{ uri: avatarUrl }}
+            style={styles.picture}
+            testID={`picture-${seat}`}
+            accessibilityIgnoresInvertColors
+          />
+        ) : (
+          <Text style={[styles.initial, (compact || small) && styles.initialCompact, tiny && styles.initialTiny]}>
+            {you ? 'You' : initialOf(name)}
+          </Text>
+        )}
       </View>
       <View style={[styles.info, tiny && styles.infoTiny]}>
         {/* Your own one-line panel skips the name: the badge already says "You". */}
@@ -114,10 +127,18 @@ const styles = StyleSheet.create({
   small: { padding: 6, gap: 8, minWidth: 130 },
   tiny: { padding: 3, gap: 6, minWidth: 124, borderRadius: 8 },
   turn: { borderColor: colors.accent },
-  avatar: { width: 48, height: 48, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
   avatarCompact: { width: 34, height: 34, borderRadius: 8 },
   initial: { color: colors.text, fontWeight: '800', fontSize: 16 },
   initialCompact: { fontSize: 13 },
+  picture: { width: '100%', height: '100%' },
   avatarTiny: { width: 24, height: 24, borderRadius: 6 },
   initialTiny: { fontSize: 9 },
   infoTiny: { flexDirection: 'row', alignItems: 'baseline', gap: 5 },

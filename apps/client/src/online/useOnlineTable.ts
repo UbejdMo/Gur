@@ -37,6 +37,7 @@ export function useOnlineTable(
   clockOffset: number,
 ): TableModel {
   const names = useMemo(() => lobby.members.map((m) => m.name), [lobby.members]);
+  const avatars = useMemo(() => lobby.members.map((m) => m.avatarUrl), [lobby.members]);
   const [state, dispatch] = useReducer(onlineTableReducer, undefined, () => initialOnlineTable(lobby.game, names));
   // Follow the server: a new view is taken in before this render goes on.
   if (state.view !== lobby.game) dispatch({ type: 'server', view: lobby.game, names });
@@ -118,6 +119,7 @@ export function useOnlineTable(
   return {
     view,
     names: state.names,
+    avatars,
     layout,
     selected,
     message: state.message,

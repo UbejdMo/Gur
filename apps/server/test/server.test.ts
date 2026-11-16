@@ -179,6 +179,77 @@ describe('the game server', () => {
     });
   });
 
+  it('uses the checked name and picture of a signed-in player, and gives them their own seat back', async () => {
+    const accounts: Record<string, { userId: string; username: string; publicId: string; avatarUrl: string | null }> = {
+      'token-ana': {
+        userId: 'u-ana',
+        username: 'AnaK',
+        publicId: '48213377',
+        avatarUrl: 'https://example.com/ana.png',
+      },
+    };
+    const url = await startServer({ verify: async (token) => accounts[token] ?? null });
+    const ana = await connect(url);
+    const ben = await connect(url);
+
+    // the name she typed is ignored: the profile decides
+    const created = await ask<{ code: string; memberId: string }>((reply) =>
+      ana.socket.emit('create', { name: 'Queen of Gur', token: 'token-ana' }, reply),
+    );
+    if (!created.ok) throw new Error(created.error);
+    await ask((reply) => ben.socket.emit('join', { code: created.code, name: 'Ben', token: null }, reply));
+    const lobby = await until(ben.seen, (s) => s.members.length === 2);
+    expect(lobby.members[0]).toMatchObject({
+      name: 'AnaK',
+      avatarUrl: 'https://example.com/ana.png',
+      publicId: '48213377',
+    });
+    expect(lobby.members[1]).toMatchObject({ name: 'Ben', avatarUrl: null, publicId: null });
+
+    // a token that is not valid (any more) is refused, for creating and for joining
+    const expired = { ok: false, error: expect.stringMatching(/sign-in has expired/) };
+    expect(await ask((reply) => ben.socket.emit('create', { name: 'Ben', token: 'made-up' }, reply))).toMatchObject(
+      expired,
+    );
+    expect(
+      await ask((reply) =>
+        ben.socket.emit('join', { code: created.code, name: 'Ben', token: { not: 'a string' } as never }, reply),
+      ),
+    ).toMatchObject(expired);
+
+    // Ana opens the game on a second device, mid-game, without her key to the lobby:
+    // her account gets her the same seat, and nobody new appears at the table
+    await ask((reply) => ana.socket.emit('start', reply));
+    const phone = await connect(url);
+    const again = await ask<{ code: string; memberId: string }>((reply) =>
+      phone.socket.emit('join', { code: created.code, name: '', token: 'token-ana' }, reply),
+    );
+    expect(again).toEqual({ ok: true, code: created.code, memberId: created.memberId });
+    const onPhone = await until(phone.seen, (s) => s.game !== null);
+    expect(onPhone.you).toBe(0);
+    expect(onPhone.members).toHaveLength(2);
+    expect(onPhone.game!.players[0]!.groups).not.toBeNull();
+    // a guest still cannot walk into a game in progress
+    const late = await connect(url);
+    expect(await ask((reply) => late.socket.emit('join', { code: created.code, name: 'Cem' }, reply))).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/already started/),
+    });
+  });
+
+  it('without accounts set up, a token is ignored and everybody is a guest', async () => {
+    const url = await startServer();
+    const ana = await connect(url);
+    const created = await ask<{ code: string }>((reply) =>
+      ana.socket.emit('create', { name: 'Ana', token: 'anything' }, reply),
+    );
+    expect(created.ok).toBe(true);
+    expect((await until(ana.seen, (s) => s.members.length === 1)).members[0]).toMatchObject({
+      name: 'Ana',
+      publicId: null,
+    });
+  });
+
   it('plays a whole match against bots and returns to the lobby', async () => {
     const url = await startServer();
     const ana = await connect(url);

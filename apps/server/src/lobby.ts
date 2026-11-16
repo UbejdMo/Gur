@@ -66,10 +66,20 @@ export const MAX_PLAYERS = 4;
 export const MAX_NAME_LENGTH = 16;
 export const DEFAULT_SETTINGS: LobbySettings = { aceHigh: true, rounds: 1, fillWithBots: false };
 
+/** A player whose sign-in the server has checked. */
+export interface SignedInPlayer {
+  userId: string;
+  username: string;
+  publicId: string;
+  avatarUrl: string | null;
+}
+
 interface Member {
   /** Secret: only this player's app knows it. */
   id: string;
   name: string;
+  /** Set for players with an account. */
+  account?: SignedInPlayer;
   bot: boolean;
   connected: boolean;
   /** Walked away from a game in progress. Their seat stays and the game plays for them. */
@@ -105,13 +115,17 @@ export class Lobby {
 
   // ---------- who is here ----------
 
-  /** A new player comes in. Returns their secret id. */
-  join(rawName: string): string {
+  /**
+   * A new player comes in. Returns their secret id. A signed-in player goes by the name on
+   * their profile; a guest by the name they typed.
+   */
+  join(rawName: string, account?: SignedInPlayer): string {
     if (this.game) throw new LobbyError('This game has already started');
     if (this.members.length >= MAX_PLAYERS) throw new LobbyError('This lobby is full');
     const member: Member = {
       id: this.config.newId(),
-      name: this.freeName(cleanName(rawName)),
+      name: this.freeName(account ? account.username : cleanName(rawName)),
+      account,
       bot: false,
       connected: true,
       left: false,
@@ -120,6 +134,11 @@ export class Lobby {
     this.hostId ??= member.id;
     this.changed();
     return member.id;
+  }
+
+  /** The seat a signed-in player already has in this lobby (their secret id), or null. */
+  seatOfAccount(userId: string): string | null {
+    return this.humans().find((m) => m.account?.userId === userId)?.id ?? null;
   }
 
   has(memberId: string): boolean {
@@ -252,6 +271,8 @@ export class Lobby {
         bot: m.bot,
         connected: m.connected && !m.left,
         host: m.id === this.hostId,
+        avatarUrl: m.account?.avatarUrl ?? null,
+        publicId: m.account?.publicId ?? null,
       })),
       settings: { ...this.settings },
       game: this.game ? playerView(this.game, you) : null,
