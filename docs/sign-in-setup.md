@@ -18,7 +18,8 @@ This is done once, by whoever owns the game. It takes about 15 minutes and costs
    - **Authorized JavaScript origins**: `https://ubejdmo.github.io`
    - **Authorized redirect URIs**: the Callback URL from step 1
 5. Copy the **Client ID** and **Client secret** into the Google page in Supabase, switch the provider on and save. The secret goes nowhere else: not into the code, not into a chat.
-6. Back in Google, under **Audience**, press **Publish app**. While it says "Testing", only the test users listed there can sign in.
+6. Back in Google, under **Audience**, add yourself and anyone else who will try the game under **Test users**. While the app says "Testing", only they can sign in (up to 100 people).
+7. To open sign-in to everybody, press **Publish app** on the same page. Google only allows that once **Branding** has a home page, a privacy policy link and a terms of service link, all on an authorized domain.
 
 ## 3. Where players come back to
 
@@ -43,7 +44,7 @@ They go in two places:
 | The app         | `DEFAULT_SUPABASE_URL` and `DEFAULT_SUPABASE_KEY` in `apps/client/src/account/config.ts` |
 | The game server | `SUPABASE_URL` and `SUPABASE_KEY` in `render.yaml`                                       |
 
-Once that is merged, the web game shows **Sign in with Google** on its first screen, and the game server's start-up line says `accounts on`.
+Once that is merged, the web game shows **Sign in with Google** on its first screen, and the game server's address (opened in a browser) answers `Gur game server: ok (accounts on)`. If it still says `guests only`, the server was not made from `render.yaml`: add the two values by hand under **Environment** in the Render dashboard.
 
 ## How it fits together
 
