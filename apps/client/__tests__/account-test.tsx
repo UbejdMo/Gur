@@ -40,7 +40,9 @@ const ANA: Profile = {
 };
 
 /** A stand-in for Supabase: a saved sign-in (or none), one profile, and names that are taken. */
-function fakeBackend(start: { signedIn?: boolean; profile?: Profile | null; taken?: string[]; down?: boolean } = {}) {
+function fakeBackend(
+  start: { signedIn?: boolean; profile?: Profile | null; taken?: string[]; down?: boolean; keeps?: boolean } = {},
+) {
   let signedIn = start.signedIn ?? false;
   let profile = start.profile === undefined ? ANA : start.profile;
   const listeners = new Set<() => void>();
@@ -72,6 +74,14 @@ function fakeBackend(start: { signedIn?: boolean; profile?: Profile | null; take
       if (username === 'Broken') return Promise.resolve({ ok: false, reason: 'failed' });
       profile = { ...profile!, username };
       return Promise.resolve({ ok: true, profile });
+    },
+    deleteAccount: () => {
+      calls.push('delete');
+      if (start.down) return Promise.reject(new Error('offline'));
+      if (start.keeps) return Promise.resolve(false);
+      signedIn = false;
+      profile = null;
+      return Promise.resolve(true);
     },
   };
   /** The player comes back from Google signed in: the service says something changed. */
@@ -113,6 +123,7 @@ describe('the account', () => {
     expect(await account.token()).toBeNull();
     expect(await account.signIn('https://example.com/')).toMatch(/not set up/);
     expect(await account.rename('Ana')).toMatch(/Sign in first/);
+    expect(await account.deleteAccount()).toMatch(/Sign in first/);
     await account.signOut();
     expect(account.get().status).toBe('signedOut');
   });
@@ -163,6 +174,27 @@ describe('the account', () => {
     expect(await account.rename('  Ana_K ')).toBeNull();
     expect(account.get().profile?.username).toBe('Ana_K');
     expect(calls.at(-1)).toBe('rename:Ana_K');
+  });
+
+  it('deletes the account for good, and says so when that did not work', async () => {
+    const { account, calls } = await started({ signedIn: true });
+    expect(await account.deleteAccount()).toBeNull();
+    expect(calls).toEqual(['delete']);
+    expect(account.get()).toMatchObject({ status: 'signedOut', profile: null });
+    expect(await account.token()).toBeNull();
+    // there is nothing left to delete
+    expect(await account.deleteAccount()).toMatch(/Sign in first/);
+
+    // refused by the service, or the service cannot be reached: the account stays as it is
+    const kept = await started({ signedIn: true, keeps: true });
+    expect(await kept.account.deleteAccount()).toMatch(/could not be deleted/);
+    expect(kept.account.get().status).toBe('signedIn');
+    const later = fakeBackend({ signedIn: true });
+    const offline = new Account({ ...later.backend, deleteAccount: () => Promise.reject(new Error('offline')) });
+    offline.start();
+    await waitFor(() => expect(offline.get().status).toBe('signedIn'));
+    expect(await offline.deleteAccount()).toMatch(/could not be deleted/);
+    expect(offline.get().profile).toEqual(ANA);
   });
 
   it('falls back to playing as a guest when the service cannot be reached', async () => {
@@ -238,6 +270,37 @@ describe('the account card on the home screen', () => {
 
     await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
     expect(screen.getByRole('button', { name: 'Sign in with Google' })).toBeTruthy();
+  });
+
+  it('deletes your account only after asking, and then says it is gone', async () => {
+    const fake = await started({ signedIn: true });
+    mockHolder.account = fake.account;
+    await render(<AccountCard />);
+
+    // changing your mind deletes nothing
+    await fireEvent.press(screen.getByRole('button', { name: 'Delete account' }));
+    expect(screen.getByTestId('delete-warning')).toHaveTextContent(/cannot be undone/);
+    await fireEvent.press(screen.getByRole('button', { name: 'Keep my account' }));
+    expect(fake.calls).toEqual([]);
+    expect(screen.getByTestId('account-name')).toHaveTextContent('AnaKrasniqi');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Delete account' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Delete for good' }));
+    expect(fake.calls).toEqual(['delete']);
+    expect(screen.getByTestId('account-deleted')).toHaveTextContent(/Your account is deleted/);
+    expect(screen.getByRole('button', { name: 'Sign in with Google' })).toBeTruthy();
+    expect(screen.queryByTestId('account-name')).toBeNull();
+  });
+
+  it('says so when the account could not be deleted, and keeps it', async () => {
+    const fake = await started({ signedIn: true, keeps: true });
+    mockHolder.account = fake.account;
+    await render(<AccountCard />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Delete account' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Delete for good' }));
+    expect(screen.getByTestId('account-error')).toHaveTextContent(/could not be deleted/);
+    expect(screen.getByTestId('account-name')).toHaveTextContent('AnaKrasniqi');
+    expect(screen.queryByTestId('account-deleted')).toBeNull();
   });
 
   it('shows an initial when the account has no picture', async () => {

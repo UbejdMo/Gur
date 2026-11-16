@@ -144,6 +144,15 @@ const server = createServer((request, response) => {
       }
     }
 
+    // A player deletes their own account: the profile goes, and their sign-ins stop working.
+    if (url.pathname === '/rest/v1/rpc/delete_account' && request.method === 'POST') {
+      const id = userOf(request);
+      if (!id) return send(response, 401, { code: '42501', message: 'permission denied for function delete_account' });
+      profiles.delete(id);
+      for (const [token, owner] of tokens) if (owner === id) tokens.delete(token);
+      return send(response, 204);
+    }
+
     return send(response, 404, { message: `Not part of the stand-in: ${request.method} ${url.pathname}` });
   })().catch((error) => send(response, 500, { message: String(error) }));
 });

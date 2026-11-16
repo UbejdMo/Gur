@@ -50,5 +50,13 @@ export function supabaseBackend(url: string, key: string): AuthBackend {
       // Postgres codes: 23505 = the name is taken (unique), 23514 = it breaks the shape rule (check).
       return { ok: false, reason: error?.code === '23505' ? 'taken' : error?.code === '23514' ? 'invalid' : 'failed' };
     },
+    deleteAccount: async () => {
+      // `delete_account` (supabase/migrations) removes the caller's own account, and nobody else's.
+      const { error } = await client.rpc('delete_account');
+      if (error) return false;
+      // The account is gone, so there is nothing left to sign out of on the service: just forget it here.
+      await client.auth.signOut({ scope: 'local' });
+      return true;
+    },
   };
 }
