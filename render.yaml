@@ -16,3 +16,9 @@ services:
       # The web game on GitHub Pages, plus the app running on a developer's computer.
       - key: ALLOWED_ORIGINS
         value: https://ubejdmo.github.io,http://localhost:8081
+      # Accounts (docs/sign-in-setup.md). Until these two are added, everybody plays as a guest.
+      # Both are public values: the project's address and its publishable key, never a secret key.
+      # - key: SUPABASE_URL
+      #   value: https://<project>.supabase.co
+      # - key: SUPABASE_KEY
+      #   value: sb_publishable_...

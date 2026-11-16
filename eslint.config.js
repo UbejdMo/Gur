@@ -35,5 +35,9 @@ export default tseslint.config(
     files: ['apps/client/__tests__/**'],
     languageOptions: { globals: globals.jest },
   },
+  {
+    files: ['apps/client/e2e/**/*.mjs'],
+    languageOptions: { globals: globals.node },
+  },
   prettier,
 );

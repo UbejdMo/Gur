@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAccount } from '@/account';
 import { online } from '@/online/connection';
 import { colors } from '@/theme';
 
@@ -12,7 +13,10 @@ import { colors } from '@/theme';
 export default function Friends() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ code?: string }>();
-  const [name, setName] = useState(() => online.savedName());
+  // A signed-in player goes by the name on their profile; a guest types one.
+  const { profile } = useAccount();
+  const [typed, setName] = useState(() => online.savedName());
+  const name = profile?.username ?? typed;
   const [code, setCode] = useState(() => (params.code ?? '').toUpperCase());
   const [busy, setBusy] = useState<'create' | 'join' | null>(null);
   const [slow, setSlow] = useState(false);
@@ -67,18 +71,24 @@ export default function Friends() {
       )}
 
       <View style={styles.card}>
-        <Text style={styles.label}>Your name</Text>
-        <TextInput
-          accessibilityLabel="Your name"
-          value={name}
-          onChangeText={setName}
-          maxLength={16}
-          autoCapitalize="words"
-          autoCorrect={false}
-          placeholder="Name"
-          placeholderTextColor={colors.textMuted}
-          style={styles.input}
-        />
+        <Text style={styles.label}>{profile ? 'Playing as' : 'Your name'}</Text>
+        {profile ? (
+          <Text style={styles.cardTitle} testID="playing-as">
+            {profile.username}
+          </Text>
+        ) : (
+          <TextInput
+            accessibilityLabel="Your name"
+            value={typed}
+            onChangeText={setName}
+            maxLength={16}
+            autoCapitalize="words"
+            autoCorrect={false}
+            placeholder="Name"
+            placeholderTextColor={colors.textMuted}
+            style={styles.input}
+          />
+        )}
       </View>
 
       <View style={styles.card}>

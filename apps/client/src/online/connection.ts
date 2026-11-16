@@ -7,6 +7,7 @@
  */
 import { io } from 'socket.io-client';
 import type { Ack, ClientToServerEvents, GameAction, LobbySettings, LobbyState } from '@gur/server/protocol';
+import { account } from '@/account';
 import { serverUrl } from './config';
 
 /** 'idle': not in use. 'connecting': first contact. 'online': connected. 'offline': lost, trying again. */
@@ -79,6 +80,8 @@ export class Connection {
       io(serverUrl(), { transports: ['websocket'] }) as unknown as SocketLike,
     private readonly store: SessionStore = defaultStore,
     private readonly now: () => number = Date.now,
+    /** The sign-in token of a player with an account, or null for a guest. */
+    private readonly getToken: () => Promise<string | null> = async () => null,
   ) {}
 
   // ---------- for screens ----------
@@ -104,14 +107,17 @@ export class Connection {
 
   async create(name: string, settings?: Partial<LobbySettings>): Promise<Ack<{ code: string }>> {
     this.store.set(NAME_KEY, name.trim());
-    const answer = await this.request<{ code: string; memberId: string }>('create', { name, settings });
+    const answer = await this.request<{ code: string; memberId: string }>(
+      'create',
+      await this.signed({ name, settings }),
+    );
     if (answer.ok) this.keep({ code: answer.code, memberId: answer.memberId });
     return answer;
   }
 
   async join(code: string, name: string): Promise<Ack<{ code: string }>> {
     this.store.set(NAME_KEY, name.trim());
-    const answer = await this.request<{ code: string; memberId: string }>('join', { code, name });
+    const answer = await this.request<{ code: string; memberId: string }>('join', await this.signed({ code, name }));
     if (answer.ok) this.keep({ code: answer.code, memberId: answer.memberId });
     return answer;
   }
@@ -192,6 +198,16 @@ export class Connection {
     });
   }
 
+  /**
+   * Adds the sign-in token of a player with an account, so the server knows who they are.
+   * The line is opened first: looking the token up can take a moment, and the server may be waking.
+   */
+  private async signed<T extends object>(payload: T): Promise<T & { token?: string }> {
+    this.open();
+    const token = await this.getToken().catch(() => null);
+    return token ? { ...payload, token } : payload;
+  }
+
   private keep(session: Session): void {
     this.session = session;
     this.store.set(SESSION_KEY, JSON.stringify(session));
@@ -220,5 +236,5 @@ export class Connection {
   }
 }
 
-/** The app's one connection. */
-export const online = new Connection();
+/** The app's one connection. A signed-in player's token goes along when they open or join a lobby. */
+export const online = new Connection(undefined, undefined, undefined, () => account.token());

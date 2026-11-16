@@ -3,6 +3,9 @@ import { defineConfig, devices } from '@playwright/test';
 const PORT = 8090;
 /** The game server the tests start for playing with friends. The app is pointed at it in e2e/friends.spec.ts. */
 export const SERVER_PORT = 3190;
+/** A stand-in for the Supabase project (accounts), see e2e/fake-supabase.mjs and e2e/account.spec.ts. */
+export const ACCOUNTS_PORT = 3191;
+export const ACCOUNTS_KEY = 'sb_publishable_for_tests';
 
 /**
  * Browser tests against the exported web build and the built game server
@@ -36,7 +39,18 @@ export default defineConfig({
       url: `http://localhost:${SERVER_PORT}/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
-      env: { PORT: String(SERVER_PORT) },
+      env: {
+        PORT: String(SERVER_PORT),
+        SUPABASE_URL: `http://localhost:${ACCOUNTS_PORT}`,
+        SUPABASE_KEY: ACCOUNTS_KEY,
+      },
+    },
+    {
+      command: 'node e2e/fake-supabase.mjs',
+      url: `http://localhost:${ACCOUNTS_PORT}/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+      env: { PORT: String(ACCOUNTS_PORT) },
     },
   ],
 });

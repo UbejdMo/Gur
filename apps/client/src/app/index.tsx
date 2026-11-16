@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-nat
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { tileId } from '@gur/engine';
+import { AccountCard } from '@/components/AccountCard';
 import { FullscreenButton } from '@/components/FullscreenButton';
 import { Tile } from '@/components/Tile';
 import { inPhoneBrowser, useFullscreen } from '@/hooks/useFullscreen';
@@ -41,6 +42,8 @@ export default function Home() {
           <Tile key={id} id={id} />
         ))}
       </View>
+
+      <AccountCard />
 
       <View style={styles.option}>
         <View style={styles.optionText}>

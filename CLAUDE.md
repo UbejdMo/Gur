@@ -4,11 +4,12 @@ Gur is a closed-hand tile rummy game, played the way it is in Kosovo, for web, A
 
 ## Layout
 
-| Path              | What it is                                                                                                                                                                                                                                         |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/engine` | The rules: tiles, joker, melds, closing hands, turns, scoring, plus simple bots (`src/bot.ts`). Pure TypeScript, no dependencies. Used by the server (authoritative) and the app (offline bots).                                                   |
-| `apps/client`     | Expo app (Expo Router) for web, Android and iOS. Screens in `src/app/`, components in `src/components/`, the practice game and rack in `src/game/`, playing with friends in `src/online/`. See `apps/client/AGENTS.md` for Expo-specific guidance. |
-| `apps/server`     | Node game server (Socket.IO): lobbies with codes, authoritative play, turn timer, bots for empty seats. `src/lobby.ts` holds the logic, `src/server.ts` the network, `src/protocol.ts` the messages (the app imports its types).                   |
+| Path              | What it is                                                                                                                                                                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `packages/engine` | The rules: tiles, joker, melds, closing hands, turns, scoring, plus simple bots (`src/bot.ts`). Pure TypeScript, no dependencies. Used by the server (authoritative) and the app (offline bots).                                                                               |
+| `apps/client`     | Expo app (Expo Router) for web, Android and iOS. Screens in `src/app/`, components in `src/components/`, the practice game and rack in `src/game/`, playing with friends in `src/online/`, accounts in `src/account/`. See `apps/client/AGENTS.md` for Expo-specific guidance. |
+| `apps/server`     | Node game server (Socket.IO): lobbies with codes, authoritative play, turn timer, bots for empty seats. `src/lobby.ts` holds the logic, `src/server.ts` the network, `src/protocol.ts` the messages (the app imports its types).                                               |
+| `supabase`        | The database behind the accounts: `migrations/` holds the SQL that sets it up (player profiles).                                                                                                                                                                               |
 
 ## Commands
 
@@ -38,6 +39,7 @@ Run from the repo root. Node 22 and pnpm 9 (via `corepack enable`).
 - The server is authoritative: clients send intentions, the server validates them with `@gur/engine`. Never trust a client's game state. A player is only ever sent their own view (`playerView` in the engine): never another rack, never the order of the middle. Anything a player may be told is refused with a `LobbyError`, whose message is shown to that player.
 - One table, two sources: `GameTable` draws a `TableModel` (a `PlayerView` plus the rack and the actions). `usePracticeGame` builds it from a game on the device, `useOnlineTable` from the server's state. A change to the table must work for both, and for 2, 3 and 4 players.
 - The app talks to the game server through `src/online/connection.ts` only. The server's address is `DEFAULT_SERVER` in `src/online/config.ts`; `EXPO_PUBLIC_SERVER_URL` overrides it at build time (a local server is `http://localhost:3001`).
+- Accounts are optional and live in a Supabase project (`docs/sign-in-setup.md`, `supabase/migrations/`). The app reaches Supabase through `src/account/supabaseBackend.ts` only, and shows nothing about signing in while `src/account/config.ts` has no project. Only the project URL and the publishable key (`sb_publishable_...`) ever go into this repo; never a secret key. The game server takes a signed-in player's name and picture from their profile, checked with their token (`apps/server/src/verify.ts`), never from what the app says. A change to the database is a new file in `supabase/migrations/` with a test in `apps/server/test/`.
 - Engine functions are pure: they return a new state and never mutate their input. Illegal moves throw `RuleError`.
 - The app imports the engine's built output, so the engine must be built first (`pnpm dev` and Turbo do this).
 - Every screen element a test needs gets a `testID` or an accessibility label; tests query by role and label first.

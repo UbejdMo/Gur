@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Ack, LobbySettings, LobbyState } from '@gur/server/protocol';
 import { avatarColor, initialOf } from './PlayerPanel';
@@ -88,9 +88,18 @@ export function LobbyRoom({ lobby, onSettings, onStart, onLeave }: Props) {
           }
           return (
             <View key={i} style={styles.member} testID="member">
-              <View style={[styles.avatar, { backgroundColor: avatarColor(i) }]}>
-                <Text style={styles.initial}>{initialOf(member.name)}</Text>
-              </View>
+              {member.avatarUrl ? (
+                <Image
+                  source={{ uri: member.avatarUrl }}
+                  style={styles.avatar}
+                  testID={`picture-${i}`}
+                  accessibilityIgnoresInvertColors
+                />
+              ) : (
+                <View style={[styles.avatar, { backgroundColor: avatarColor(i) }]}>
+                  <Text style={styles.initial}>{initialOf(member.name)}</Text>
+                </View>
+              )}
               <Text style={styles.name} numberOfLines={1}>
                 {member.name}
                 {i === lobby.you ? ' (you)' : ''}
