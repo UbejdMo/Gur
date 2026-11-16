@@ -19,7 +19,10 @@ This is done once, by whoever owns the game. It takes about 15 minutes and costs
    - **Authorized redirect URIs**: the Callback URL from step 1
 5. Copy the **Client ID** and **Client secret** into the Google page in Supabase, switch the provider on and save. The secret goes nowhere else: not into the code, not into a chat.
 6. Back in Google, under **Audience**, add yourself and anyone else who will try the game under **Test users**. While the app says "Testing", only they can sign in (up to 100 people).
-7. To open sign-in to everybody, press **Publish app** on the same page. Google only allows that once **Branding** has a home page, a privacy policy link and a terms of service link, all on an authorized domain.
+7. To open sign-in to everybody, fill in three links under **Branding** and save, then press **Publish app** under **Audience**. Google only allows publishing once they are there:
+   - **Application home page**: `https://ubejdmo.github.io/Gur/`
+   - **Application privacy policy link**: `https://ubejdmo.github.io/Gur/privacy.html`
+   - **Application terms of service link**: `https://ubejdmo.github.io/Gur/terms.html`
 
 ## 3. Where players come back to
 

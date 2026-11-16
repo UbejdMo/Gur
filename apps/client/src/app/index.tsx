@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { tileId } from '@gur/engine';
 import { AccountCard } from '@/components/AccountCard';
 import { FullscreenButton } from '@/components/FullscreenButton';
+import { PageLink } from '@/components/PageLink';
 import { Tile } from '@/components/Tile';
 import { inPhoneBrowser, useFullscreen } from '@/hooks/useFullscreen';
 import { colors } from '@/theme';
@@ -95,6 +96,17 @@ export default function Home() {
             : 'For a bigger table, add Gur to your home screen: tap Share, then "Add to Home Screen". It then opens like an app, without the address bar.'}
         </Text>
       )}
+
+      <View style={styles.footer}>
+        <Text style={styles.about}>
+          A free tile rummy game for 2 to 4 players. Play against bots, or with friends by lobby code.
+        </Text>
+        <View style={styles.links}>
+          <PageLink page="privacy.html">Privacy policy</PageLink>
+          <Text style={styles.about}>·</Text>
+          <PageLink page="terms.html">Terms of service</PageLink>
+        </View>
+      </View>
     </ScrollView>
   );
 }
@@ -123,4 +135,7 @@ const styles = StyleSheet.create({
   buttonPressed: { opacity: 0.8 },
   buttonText: { fontSize: 17, fontWeight: '800', color: '#2A2A2A' },
   note: { fontSize: 13, color: colors.textMuted, textAlign: 'center', maxWidth: 320 },
+  footer: { alignItems: 'center', gap: 6, marginTop: 12, maxWidth: 360 },
+  about: { fontSize: 13, color: colors.textMuted, textAlign: 'center' },
+  links: { flexDirection: 'row', gap: 8, alignItems: 'center' },
 });

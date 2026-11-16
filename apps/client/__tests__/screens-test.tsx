@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import Home from '@/app/index';
 import { Table } from '@/components/Table';
-import { StyleSheet } from 'react-native';
+import { Linking, StyleSheet } from 'react-native';
 import { DiscardRow } from '@/components/DiscardRow';
 import { colors, tileInk } from '@/theme';
 import { ALMOST, NEEDS_K13, READY, practiceGame, t, ts } from '../test-utils/deal';
@@ -16,6 +16,17 @@ describe('Home', () => {
     await fireEvent(screen.getByLabelText('Allow 12-13-1'), 'valueChange', false);
     await fireEvent.press(screen.getByRole('button', { name: 'Play against bots' }));
     expect(router.push).toHaveBeenCalledWith('/play?aceHigh=0');
+  });
+
+  it('says what the game is and links to the privacy policy and the terms', async () => {
+    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
+    await render(<Home />);
+    expect(screen.getByText(/free tile rummy game for 2 to 4 players/)).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('link', { name: 'Privacy policy' }));
+    expect(open).toHaveBeenLastCalledWith('https://ubejdmo.github.io/Gur/privacy.html');
+    await fireEvent.press(screen.getByRole('link', { name: 'Terms of service' }));
+    expect(open).toHaveBeenLastCalledWith('https://ubejdmo.github.io/Gur/terms.html');
+    open.mockRestore();
   });
 
   it('lets you make the bots play fast', async () => {
