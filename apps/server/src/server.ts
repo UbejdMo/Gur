@@ -48,7 +48,8 @@ export function createGameServer(config: GameServerConfig = {}): GameServer {
     // For the host's health check, and for a person who opens the address in a browser.
     const ok = req.url === '/' || req.url === '/health';
     res.writeHead(ok ? 200 : 404, { 'content-type': 'text/plain; charset=utf-8' });
-    res.end(ok ? 'Gur game server: ok\n' : 'Not found\n');
+    // It also says whether signed-in players are checked, so that can be seen from any browser.
+    res.end(ok ? `Gur game server: ok (${config.verify ? 'accounts on' : 'guests only'})\n` : 'Not found\n');
   });
   const io = new Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, Seat>(http, {
     cors: { origin: config.corsOrigin ?? '*' },

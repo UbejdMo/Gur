@@ -50,7 +50,7 @@ afterEach(async () => {
 describe('the game server', () => {
   it('answers a health check', async () => {
     const url = await startServer();
-    expect(await (await fetch(`${url}/health`)).text()).toMatch(/ok/);
+    expect(await (await fetch(`${url}/health`)).text()).toBe('Gur game server: ok (guests only)\n');
     expect((await fetch(`${url}/nothing-here`)).status).toBe(404);
   });
 
@@ -189,6 +189,7 @@ describe('the game server', () => {
       },
     };
     const url = await startServer({ verify: async (token) => accounts[token] ?? null });
+    expect(await (await fetch(`${url}/health`)).text()).toBe('Gur game server: ok (accounts on)\n');
     const ana = await connect(url);
     const ben = await connect(url);
 

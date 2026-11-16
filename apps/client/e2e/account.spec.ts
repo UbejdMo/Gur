@@ -98,7 +98,10 @@ test('signing out makes you a guest again', async ({ browser }, testInfo) => {
   await page.context().close();
 });
 
-test('without accounts set up, nothing about signing in is shown', async ({ page }) => {
+test('an app without accounts shows nothing about signing in', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.assign(window, { __GUR_ACCOUNTS__: null });
+  });
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Play with friends' })).toBeVisible();
   await expect(page.getByTestId('account')).toHaveCount(0);

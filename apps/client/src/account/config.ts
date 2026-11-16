@@ -7,15 +7,17 @@ import { Platform } from 'react-native';
  * EXPO_PUBLIC_SUPABASE_KEY.
  *
  * While they are empty the app has no accounts: everybody plays as a guest. The browser tests
- * set `__GUR_ACCOUNTS__` on the page before the app loads, to use the stand-in they started.
+ * set `__GUR_ACCOUNTS__` on the page before the app loads: to the stand-in they started, or to
+ * `null` for an app without accounts.
  */
-export const DEFAULT_SUPABASE_URL = '';
-export const DEFAULT_SUPABASE_KEY = '';
+export const DEFAULT_SUPABASE_URL = 'https://kszmzshepwzxwicdubmr.supabase.co';
+export const DEFAULT_SUPABASE_KEY = 'sb_publishable_00rnN-o9ubbMvBB4Vqn1aA_PD6bVG7x';
 
 export function accountsConfig(): { url: string; key: string } | null {
   // Signing in is built for the web so far; the phone apps get it with their store builds.
   if (Platform.OS !== 'web') return null;
-  const override = (globalThis as { __GUR_ACCOUNTS__?: { url?: unknown; key?: unknown } }).__GUR_ACCOUNTS__;
+  const override = (globalThis as { __GUR_ACCOUNTS__?: { url?: unknown; key?: unknown } | null }).__GUR_ACCOUNTS__;
+  if (override === null) return null;
   if (override && typeof override.url === 'string' && typeof override.key === 'string') {
     return { url: override.url, key: override.key };
   }
