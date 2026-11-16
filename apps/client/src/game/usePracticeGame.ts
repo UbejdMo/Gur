@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useState } from 'react';
-import { createGame, handOf, turnSeconds } from '@gur/engine';
+import { createGame, handOf, playerView, turnSeconds } from '@gur/engine';
 import type { Game, TileId } from '@gur/engine';
 import { YOU, closingTiles, initialState, practiceReducer } from './practiceReducer';
 import type { Place } from './practiceReducer';
@@ -97,8 +97,13 @@ export function usePracticeGame({
     [],
   );
 
+  // The table is drawn from your view of the game, the same shape the server sends when playing online.
+  const view = useMemo(() => playerView(game, YOU), [game]);
+
   return {
     game,
+    view,
+    names: PLAYER_NAMES,
     hand,
     layout,
     selected,

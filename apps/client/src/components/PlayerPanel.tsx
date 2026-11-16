@@ -3,6 +3,8 @@ import { colors } from '@/theme';
 
 type Props = {
   name: string;
+  /** The player's seat: it picks their colour. */
+  seat: number;
   tileCount: number;
   points: number;
   isTurn: boolean;
@@ -19,14 +21,21 @@ type Props = {
 
 const AVATAR_COLORS = ['#2F80ED', '#9B51E0', '#EB5757', '#27AE60'];
 
-/** The colour that stands for a player, on their panel and beside their discards. */
-export function avatarColor(name: string): string {
-  return AVATAR_COLORS[(name.charCodeAt(name.length - 1) || 0) % AVATAR_COLORS.length]!;
+/** The colour that stands for a seat, on its player's panel and beside their tiles. Four seats, four colours. */
+export function avatarColor(seat: number): string {
+  return AVATAR_COLORS[((seat % AVATAR_COLORS.length) + AVATAR_COLORS.length) % AVATAR_COLORS.length]!;
+}
+
+/** The mark on a player's badge: the number of "Bot 2", or the first letter of a name. */
+export function initialOf(name: string): string {
+  const last = name.at(-1) ?? '';
+  return /\d/.test(last) ? last : name.slice(0, 1).toUpperCase();
 }
 
 /** A player's place at the table: picture, name, tiles held, points, and whose turn it is. */
 export function PlayerPanel({
   name,
+  seat,
   tileCount,
   points,
   isTurn,
@@ -37,7 +46,7 @@ export function PlayerPanel({
   small,
   tiny,
 }: Props) {
-  const color = avatarColor(name);
+  const color = avatarColor(seat);
   return (
     <View
       style={[
@@ -59,7 +68,7 @@ export function PlayerPanel({
         ]}
       >
         <Text style={[styles.initial, (compact || small) && styles.initialCompact, tiny && styles.initialTiny]}>
-          {you ? 'You' : name.at(-1)}
+          {you ? 'You' : initialOf(name)}
         </Text>
       </View>
       <View style={[styles.info, tiny && styles.infoTiny]}>

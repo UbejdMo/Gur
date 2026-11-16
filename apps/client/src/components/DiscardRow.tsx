@@ -2,7 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { isRealJoker } from '@gur/engine';
 import type { Joker, TileId } from '@gur/engine';
 import { DragSource } from './DragSource';
-import { avatarColor } from './PlayerPanel';
+import { avatarColor, initialOf } from './PlayerPanel';
 import { Tile } from './Tile';
 import {
   DISCARDS_SHOWN,
@@ -17,6 +17,8 @@ import { colors } from '@/theme';
 type Props = {
   /** The player these tiles lie in front of: they were left for this player. */
   name: string;
+  /** That player's seat: it picks the badge colour. */
+  seat?: number;
   you?: boolean;
   /** The tiles left for this player (discarded by the player before them), oldest first. */
   discards: readonly TileId[];
@@ -42,6 +44,7 @@ type Props = {
  */
 export function DiscardRow({
   name,
+  seat = 0,
   you,
   discards,
   last,
@@ -62,10 +65,10 @@ export function DiscardRow({
     >
       {badge !== 'none' && (
         <View
-          style={[styles.badge, badge === 'compact' && styles.badgeCompact, { backgroundColor: avatarColor(name) }]}
+          style={[styles.badge, badge === 'compact' && styles.badgeCompact, { backgroundColor: avatarColor(seat) }]}
         >
           <Text style={[styles.badgeText, badge === 'compact' && styles.badgeTextCompact]} selectable={false}>
-            {you ? 'You' : name.at(-1)}
+            {you ? 'You' : initialOf(name)}
           </Text>
         </View>
       )}

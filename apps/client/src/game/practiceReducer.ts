@@ -1,21 +1,11 @@
-import {
-  RuleError,
-  arrange,
-  arrangedClosingHand,
-  botTurn,
-  close,
-  describeTile,
-  discard,
-  draw,
-  faceOf,
-  handOf,
-  isMeld,
-  isRealJoker,
-  timeoutMove,
-} from '@gur/engine';
+import { RuleError, arrange, botTurn, close, describeTile, discard, draw, handOf, timeoutMove } from '@gur/engine';
 import type { Game, TileId } from '@gur/engine';
 import { colsOf, initialLayout, layoutGroups, placeTile, reconcile, resizeLayout, sameGroups } from './rackLayout';
 import type { Layout, Side } from './rackLayout';
+import { closingTilesFor, pickClosingTile } from './tableModel';
+import type { Place } from './tableModel';
+
+export type { Place };
 
 export const YOU = 0;
 
@@ -44,9 +34,6 @@ export type PracticeAction =
   | { type: 'timeout' }
   | { type: 'newGame'; game: Game };
 
-/** A place on the rack: a slot, and which half of it was aimed at when a tile is already there. */
-export type Place = { slot: number; side: Side };
-
 export function initialState(game: Game, cols?: number): PracticeState {
   return withRack(
     { game, layout: [], selected: null, message: null, log: null },
@@ -54,27 +41,11 @@ export function initialState(game: Game, cols?: number): PracticeState {
   );
 }
 
-/**
- * Tiles you could discard right now to close, real jokers first (closing with one is a double).
- * The rack decides: taking the tile off must leave every group on it a meld (or seven pairs, or a mosaic).
- */
+/** Tiles you could discard right now to close, real jokers first. Empty unless it is your turn to discard. */
 export function closingTiles(game: Game): TileId[] {
   const { round } = game;
   if (game.status !== 'playing' || round.current !== YOU || round.phase !== 'discard') return [];
-  const { groups } = game.players[YOU]!;
-  const hand = groups.flat();
-  if (hand.length !== 15) return [];
-  return hand
-    .filter((t) => {
-      // Taking a tile out of the middle of a group leaves a gap, which splits the group in two.
-      const rest = groups.flatMap((g) => (g.includes(t) ? [g.slice(0, g.indexOf(t)), g.slice(g.indexOf(t) + 1)] : [g]));
-      return arrangedClosingHand(
-        rest.filter((g) => g.length > 0),
-        round.joker,
-        game.settings.aceHigh,
-      );
-    })
-    .sort((a, b) => Number(isRealJoker(b, round.joker)) - Number(isRealJoker(a, round.joker)));
+  return closingTilesFor(game.players[YOU]!.groups, round.joker, game.settings.aceHigh);
 }
 
 /**
@@ -82,21 +53,14 @@ export function closingTiles(game: Game): TileId[] {
  * the tile you left on its own outside your melds, otherwise a real joker (a double), otherwise any.
  */
 export function chooseClosingTile(state: PracticeState): TileId | null {
-  const options = closingTiles(state.game);
-  if (options.length === 0) return null;
-  if (state.selected !== null && options.includes(state.selected)) return state.selected;
   const { joker } = state.game.round;
-  const { aceHigh } = state.game.settings;
-  const loose = layoutGroups(state.layout)
-    .filter(
-      (g) =>
-        !isMeld(
-          g.map((t) => faceOf(t, joker)),
-          aceHigh,
-        ),
-    )
-    .flat();
-  return options.find((t) => loose.includes(t)) ?? options[0]!;
+  return pickClosingTile(
+    closingTiles(state.game),
+    state.selected,
+    layoutGroups(state.layout),
+    joker,
+    state.game.settings.aceHigh,
+  );
 }
 
 /** Puts the rack in step with your hand, and the engine's arrangement in step with the rack. */
