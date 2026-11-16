@@ -1,21 +1,24 @@
 /**
- * Runs the profiles migration on a real Postgres (PGlite, in this process) and checks the
- * rules it sets up. Supabase's own parts (the auth schema, the roles, auth.uid()) are
+ * Runs the migrations on a real Postgres (PGlite, in this process), in the order of their
+ * names, and checks the rules they set up. Supabase's own parts (the auth schema, the roles, auth.uid()) are
  * stood in for by the few lines at the top.
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 
-const migration = readFileSync(
-  fileURLToPath(new URL('../../../supabase/migrations/0001_profiles.sql', import.meta.url)),
-  'utf8',
-);
+const folder = fileURLToPath(new URL('../../../supabase/migrations/', import.meta.url));
+const files = readdirSync(folder)
+  .filter((name) => name.endsWith('.sql'))
+  .sort();
+const migration = files.map((name) => readFileSync(folder + name, 'utf8')).join('\n');
 
 const SUPABASE_STAND_IN = `
   create schema auth;
   create table auth.users (id uuid primary key, raw_user_meta_data jsonb);
+  -- What Supabase keeps beside a sign-in (sessions and the like) goes when the sign-in goes.
+  create table auth.sessions (id serial primary key, user_id uuid references auth.users on delete cascade);
   create role anon;
   create role authenticated;
   grant usage on schema public to anon, authenticated;
@@ -61,7 +64,12 @@ beforeAll(async () => {
   await db.exec(migration);
 });
 
-describe('the profiles migration', () => {
+describe('the migrations', () => {
+  it('are numbered, so they run in the order they were written', () => {
+    expect(files.length).toBeGreaterThan(1);
+    files.forEach((name, i) => expect(name).toMatch(new RegExp(`^${String(i + 1).padStart(4, '0')}_[a-z_]+\\.sql$`)));
+  });
+
   it('can be run a second time without harm', async () => {
     await expect(db.exec(migration)).resolves.toBeDefined();
   });
@@ -151,5 +159,41 @@ describe('the profiles migration', () => {
   it('removes the profile when the account is deleted', async () => {
     await db.query('delete from auth.users where id = $1', [BEN]);
     expect((await db.query('select 1 from public.profiles where id = $1', [BEN])).rows).toHaveLength(0);
+  });
+});
+
+describe('deleting an account', () => {
+  const CEM = '00000000-0000-0000-0000-00000000000c';
+  const DEA = '00000000-0000-0000-0000-00000000000d';
+  const count = async (table: string, id: string) =>
+    Number((await db.query<{ n: string }>(`select count(*) as n from ${table} where ${id}`)).rows[0]!.n);
+
+  it('a player deletes their own account: the sign-in, the profile and what was kept with it', async () => {
+    await signUp(CEM, { name: 'Cem' });
+    await signUp(DEA, { name: 'Dea' });
+    await db.query('insert into auth.sessions (user_id) values ($1), ($2)', [CEM, DEA]);
+
+    await as(CEM, 'select public.delete_account()');
+    expect(await count('auth.users', `id = '${CEM}'`)).toBe(0);
+    expect(await count('public.profiles', `id = '${CEM}'`)).toBe(0);
+    expect(await count('auth.sessions', `user_id = '${CEM}'`)).toBe(0);
+
+    // nobody else is touched
+    expect(await count('auth.users', `id = '${DEA}'`)).toBe(1);
+    expect(await count('auth.sessions', `user_id = '${DEA}'`)).toBe(1);
+    expect((await profile(DEA)).username).toBe('Dea');
+
+    // the name is free again
+    await as(DEA, `update public.profiles set username = 'Cem' where id = $1`, [DEA]);
+    expect((await profile(DEA)).username).toBe('Cem');
+  });
+
+  it('is only for a signed-in player, and takes nobody to name', async () => {
+    await expect(as(null, 'select public.delete_account()')).rejects.toThrow(/permission denied/);
+    await expect(as(DEA, 'select public.delete_account($1)', [ANA])).rejects.toThrow(/does not exist/);
+    // deleting twice does nothing the second time
+    await as(DEA, 'select public.delete_account()');
+    await as(DEA, 'select public.delete_account()');
+    expect(await count('auth.users', `id = '${ANA}'`)).toBe(1);
   });
 });

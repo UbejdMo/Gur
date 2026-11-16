@@ -21,6 +21,10 @@ export function AccountCard() {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Asking "are you sure?" before deleting the account. */
+  const [deleting, setDeleting] = useState(false);
+  /** Said once, after the account was deleted. */
+  const [deleted, setDeleted] = useState(false);
 
   // Coming back from Google, the address carries a one-time code. Once the sign-in has been
   // picked up it is of no use, and the router would otherwise keep showing it.
@@ -35,6 +39,7 @@ export function AccountCard() {
 
   if (status === 'signedOut' || !profile) {
     const signIn = async () => {
+      setDeleted(false);
       setBusy(true);
       setError(await account.signIn(returnAddress()));
       setBusy(false);
@@ -48,7 +53,13 @@ export function AccountCard() {
         >
           <Text style={styles.googleText}>Sign in with Google</Text>
         </Pressable>
-        <Text style={styles.hint}>Keep your name and picture wherever you play. You can also play as a guest.</Text>
+        {deleted ? (
+          <Text style={styles.hint} testID="account-deleted">
+            Your account is deleted. You can keep playing as a guest.
+          </Text>
+        ) : (
+          <Text style={styles.hint}>Keep your name and picture wherever you play. You can also play as a guest.</Text>
+        )}
         {error && (
           <Text style={styles.error} testID="account-error">
             {error}
@@ -64,6 +75,15 @@ export function AccountCard() {
     setBusy(false);
     setError(problem);
     if (!problem) setEditing(false);
+  };
+
+  const remove = async () => {
+    setBusy(true);
+    const problem = await account.deleteAccount();
+    setBusy(false);
+    setError(problem);
+    setDeleting(false);
+    if (!problem) setDeleted(true);
   };
 
   return (
@@ -86,7 +106,26 @@ export function AccountCard() {
         </View>
       </View>
 
-      {editing ? (
+      {deleting ? (
+        <>
+          <Text style={styles.warning} testID="delete-warning">
+            Delete your account? Your name, your ID and your picture are removed for good. This cannot be undone.
+          </Text>
+          <View style={styles.row}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => void remove()}
+              disabled={busy}
+              style={[styles.small, styles.smallDanger, busy && styles.dim]}
+            >
+              <Text style={styles.smallDangerText}>Delete for good</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={() => setDeleting(false)} style={styles.small}>
+              <Text style={styles.smallText}>Keep my account</Text>
+            </Pressable>
+          </View>
+        </>
+      ) : editing ? (
         <>
           <TextInput
             accessibilityLabel="New name"
@@ -133,6 +172,17 @@ export function AccountCard() {
           <Pressable accessibilityRole="button" onPress={() => void account.signOut()} style={styles.small}>
             <Text style={styles.smallText}>Sign out</Text>
           </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Delete account"
+            onPress={() => {
+              setError(null);
+              setDeleting(true);
+            }}
+            style={styles.quiet}
+          >
+            <Text style={styles.quietText}>Delete</Text>
+          </Pressable>
         </View>
       )}
       {error && (
@@ -161,6 +211,12 @@ const styles = StyleSheet.create({
   smallText: { color: colors.text, fontSize: 13, fontWeight: '700' },
   smallOn: { backgroundColor: colors.accent, borderColor: colors.accent },
   smallOnText: { color: '#2A2A2A', fontSize: 13, fontWeight: '800' },
+  smallDanger: { backgroundColor: colors.danger, borderColor: colors.danger },
+  smallDangerText: { color: '#2A2A2A', fontSize: 13, fontWeight: '800' },
+  // Deleting is rarely wanted: it sits at the end of the row, quieter than the rest.
+  quiet: { paddingVertical: 8, paddingHorizontal: 6, marginLeft: 'auto', justifyContent: 'center' },
+  quietText: { color: colors.textMuted, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
+  warning: { color: colors.text, fontSize: 14, lineHeight: 20 },
   input: {
     backgroundColor: colors.tile,
     color: '#1B1B1B',

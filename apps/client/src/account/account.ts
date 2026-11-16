@@ -34,6 +34,8 @@ export interface AuthBackend {
   signOut: () => Promise<void>;
   profile: (userId: string) => Promise<Profile | null>;
   rename: (userId: string, username: string) => Promise<RenameResult>;
+  /** Deletes the signed-in player's account for good and forgets the sign-in. False when it did not work. */
+  deleteAccount: () => Promise<boolean>;
 }
 
 /** The same rule as the database: 3 to 16 letters, digits or underscores. */
@@ -106,6 +108,23 @@ export class Account {
     if (result.reason === 'taken') return 'Somebody already has that name';
     if (result.reason === 'invalid') return 'Use only letters, digits and _ (no spaces)';
     return 'The name could not be saved. Please try again';
+  }
+
+  /**
+   * Deletes your account for good: the sign-in, your name, id and picture.
+   * Resolves to what went wrong in words, or null when it is gone.
+   */
+  async deleteAccount(): Promise<string | null> {
+    if (!this.backend || !this.snapshot.profile) return 'Sign in first';
+    let gone: boolean;
+    try {
+      gone = await this.backend.deleteAccount();
+    } catch {
+      gone = false;
+    }
+    if (!gone) return 'Your account could not be deleted. Please try again';
+    this.update({ status: 'signedOut', profile: null });
+    return null;
   }
 
   /** The token that proves to the game server who you are; null for a guest. */

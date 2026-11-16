@@ -7,7 +7,7 @@ This is done once, by whoever owns the game. It takes about 15 minutes and costs
 ## 1. The Supabase project
 
 1. Create an account at [supabase.com](https://supabase.com) and a **new project** (the free plan is enough). Pick a region close to the players (Frankfurt is next to the game server). The database password it asks for is not needed by the game; keep it somewhere safe.
-2. Open **SQL Editor**, start a new query, paste the whole of [`supabase/migrations/0001_profiles.sql`](../supabase/migrations/0001_profiles.sql) and press **Run**. It makes the table of profiles and the rules for who may change what. It is safe to run again.
+2. Open **SQL Editor** and run every file in [`supabase/migrations`](../supabase/migrations), one after the other in the order of their numbers: start a new query, paste the whole file, press **Run**. They make the table of profiles and the rules for who may change what. Each is safe to run again. When a later version of the game adds a file there, it has to be run the same way before that version is used.
 
 ## 2. Google
 
@@ -54,6 +54,7 @@ Once that is merged, the web game shows **Sign in with Google** on its first scr
 - The app sends the player to Google through Supabase and gets a sign-in token back. The token is kept by the browser, so the player stays signed in.
 - The first sign-in makes the player's profile by itself: the Google name without spaces (four digits are added if it is taken), a random eight-digit ID, the Google picture. The player can change the name; the ID never changes.
 - When a signed-in player opens or joins a lobby, the app sends the token along. The game server asks Supabase whose token it is and reads that player's profile, so a name and picture at the table cannot be made up. A player without a token is a guest under the name they typed.
+- A player can delete their account on the first screen. That removes the sign-in and the profile from Supabase at once; the player's own request to the database does it (`delete_account` in `0002_delete_account.sql`), so no secret key is involved.
 - Signing in works in the web game. The Android and iOS apps get it with their store builds.
 
 ## Trying it without a Supabase project

@@ -98,6 +98,34 @@ test('signing out makes you a guest again', async ({ browser }, testInfo) => {
   await page.context().close();
 });
 
+test('a player deletes their account: it is gone for good, and they play on as a guest', async ({
+  browser,
+}, testInfo) => {
+  const page = await player(browser, testInfo.project.use);
+  await page.getByRole('button', { name: 'Sign in with Google' }).click();
+  await expect(page.getByTestId('account-name')).toBeVisible();
+
+  // asked first; changing your mind keeps the account
+  await page.getByRole('button', { name: 'Delete account' }).click();
+  await expect(page.getByTestId('delete-warning')).toContainText('cannot be undone');
+  await testInfo.attach('delete-warning', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.getByRole('button', { name: 'Keep my account' }).click();
+  await expect(page.getByTestId('account-name')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Delete account' }).click();
+  await page.getByRole('button', { name: 'Delete for good' }).click();
+  await expect(page.getByTestId('account-deleted')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign in with Google' })).toBeVisible();
+
+  // nothing of it comes back with the page
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Sign in with Google' })).toBeVisible();
+  await expect(page.getByTestId('account-name')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Play with friends' }).click();
+  await expect(page.getByLabel('Your name')).toBeVisible();
+  await page.context().close();
+});
+
 test('an app without accounts shows nothing about signing in', async ({ page }) => {
   await page.addInitScript(() => {
     Object.assign(window, { __GUR_ACCOUNTS__: null });
