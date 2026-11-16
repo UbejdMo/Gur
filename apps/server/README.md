@@ -29,6 +29,7 @@ From the repo root:
 
 - `pnpm dev:server` starts it on port 3001 and restarts when the code changes.
 - `pnpm --filter @gur/server test` runs its tests (the lobby on fake time, real connections against a server on a spare port, and the database setup in `supabase/migrations` on a Postgres inside the test).
+- `pnpm --filter @gur/server rehearse:migrations` applies `supabase/migrations` to a database made for the test, with the same tool that updates the real one after a merge (needs the `supabase` command; CI has it).
 - `pnpm --filter @gur/server build` bundles it into `dist/index.js`; `pnpm --filter @gur/server start` runs that.
 
 Settings, read from the environment:

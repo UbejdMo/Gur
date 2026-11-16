@@ -1,0 +1,116 @@
+name: Deploy
+
+# Every time CI passes on main: first brings the database up to date, then publishes the web
+# game to GitHub Pages (https://ubejdmo.github.io/Gur/). It can also be started by hand from
+# the Actions tab. (The game server deploys itself on Render, see render.yaml.)
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  database:
+    name: Update the database
+    # Only after a green CI run on a push to main (never for pull requests).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    # One update at a time, and never cut one off half-way.
+    concurrency:
+      group: database
+      cancel-in-progress: false
+    env:
+      # The database's address with its password: a repository secret, see docs/sign-in-setup.md.
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      # Never talk to the database over an unencrypted line.
+      PGSSLMODE: require
+    steps:
+      - name: Nothing to do without the database's address
+        if: env.SUPABASE_DB_URL == ''
+        run: echo "::notice::The SUPABASE_DB_URL secret is not set, so the database was left alone. New files in supabase/migrations have to be run by hand."
+
+      - uses: actions/checkout@v7
+        if: env.SUPABASE_DB_URL != ''
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: supabase/setup-cli@v3
+        if: env.SUPABASE_DB_URL != ''
+        with:
+          version: 3.2.0
+
+      # Applies the files in supabase/migrations that the database has not seen yet, in the
+      # order of their numbers. A file that fails is undone as a whole, and the deploy stops.
+      - name: Apply new migrations
+        if: env.SUPABASE_DB_URL != ''
+        run: |
+          # Keep the password out of the log even if a tool prints it on its own.
+          node -e '
+            let p;
+            try { p = new URL(process.env.SUPABASE_DB_URL).password; } catch { console.log("::error::SUPABASE_DB_URL is not a database address (it should start with postgresql://)"); process.exit(1); }
+            for (const v of new Set([p, decodeURIComponent(p)])) if (v) console.log("::add-mask::" + v);
+          '
+          supabase db push --yes --remote="$SUPABASE_DB_URL"
+
+  build:
+    name: Build web game
+    # The web game goes out only once the database is ready for it.
+    needs: database
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build engine and web app
+        run: pnpm build
+        env:
+          EXPO_BASE_URL: /Gur
+
+      # Pages serves 404.html for unknown paths; the app's router then shows the right screen,
+      # so links like /Gur/play work. .nojekyll keeps folders starting with "_" (Expo's assets).
+      - name: Single-page app fallback
+        run: |
+          cp apps/client/dist/index.html apps/client/dist/404.html
+          touch apps/client/dist/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: apps/client/dist
+
+  deploy:
+    name: Publish to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

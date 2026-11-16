@@ -14,19 +14,7 @@ const files = readdirSync(folder)
   .sort();
 const migration = files.map((name) => readFileSync(folder + name, 'utf8')).join('\n');
 
-const SUPABASE_STAND_IN = `
-  create schema auth;
-  create table auth.users (id uuid primary key, raw_user_meta_data jsonb);
-  -- What Supabase keeps beside a sign-in (sessions and the like) goes when the sign-in goes.
-  create table auth.sessions (id serial primary key, user_id uuid references auth.users on delete cascade);
-  create role anon;
-  create role authenticated;
-  grant usage on schema public to anon, authenticated;
-  -- Supabase reads the signed-in user from the request; here a setting plays that part.
-  create function auth.uid() returns uuid language sql stable
-    as $$ select nullif(current_setting('request.uid', true), '')::uuid $$;
-  grant usage on schema auth to anon, authenticated;
-`;
+const SUPABASE_STAND_IN = readFileSync(fileURLToPath(new URL('./supabase-stand-in.sql', import.meta.url)), 'utf8');
 
 const ANA = '00000000-0000-0000-0000-00000000000a';
 const BEN = '00000000-0000-0000-0000-00000000000b';
