@@ -18,6 +18,8 @@ const profiles = new Map();
 const codes = new Map();
 /** Sign-in tokens -> user id. */
 const tokens = new Map();
+/** Friend requests and friendships: who asked whom, and whether it was accepted. */
+let friendships = [];
 let players = 0;
 
 // A name that is always taken, for the "somebody already has that name" case.
@@ -144,11 +146,64 @@ const server = createServer((request, response) => {
       }
     }
 
+    // Friends: the same four functions as in supabase/migrations/0003_friends.sql, in short.
+    if (url.pathname.startsWith('/rest/v1/rpc/') && url.pathname.includes('friend')) {
+      const me = userOf(request);
+      if (!me) return send(response, 401, { code: '42501', message: 'permission denied' });
+      const { who } = await bodyOf(request);
+      const between = (other) =>
+        friendships.find(
+          (f) => (f.requester === me && f.addressee === other) || (f.requester === other && f.addressee === me),
+        );
+      switch (url.pathname.split('/').pop()) {
+        case 'my_friends':
+          return send(
+            response,
+            200,
+            friendships
+              .filter((f) => f.requester === me || f.addressee === me)
+              .map((f) => ({
+                ...profiles.get(f.requester === me ? f.addressee : f.requester),
+                state: f.accepted ? 'friend' : f.addressee === me ? 'incoming' : 'outgoing',
+              })),
+          );
+        case 'add_friend': {
+          const wanted = String(who ?? '')
+            .trim()
+            .toLowerCase();
+          const them = [...profiles.values()].find(
+            (p) => p.public_id === wanted || p.username.toLowerCase() === wanted,
+          );
+          const answer = (status) => send(response, 200, [{ status, username: them?.username ?? null }]);
+          if (!them) return answer('not_found');
+          if (them.id === me) return answer('yourself');
+          const row = between(them.id);
+          if (row?.accepted) return answer('already');
+          if (row?.requester === me) return answer('waiting');
+          if (row) {
+            row.accepted = true;
+            return answer('friends');
+          }
+          friendships.push({ requester: me, addressee: them.id, accepted: false });
+          return answer('sent');
+        }
+        case 'accept_friend': {
+          const row = friendships.find((f) => f.requester === who && f.addressee === me);
+          if (row) row.accepted = true;
+          return send(response, 204);
+        }
+        case 'remove_friend':
+          friendships = friendships.filter((f) => f !== between(who));
+          return send(response, 204);
+      }
+    }
+
     // A player deletes their own account: the profile goes, and their sign-ins stop working.
     if (url.pathname === '/rest/v1/rpc/delete_account' && request.method === 'POST') {
       const id = userOf(request);
       if (!id) return send(response, 401, { code: '42501', message: 'permission denied for function delete_account' });
       profiles.delete(id);
+      friendships = friendships.filter((f) => f.requester !== id && f.addressee !== id);
       for (const [token, owner] of tokens) if (owner === id) tokens.delete(token);
       return send(response, 204);
     }

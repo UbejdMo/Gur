@@ -185,3 +185,120 @@ describe('deleting an account', () => {
     expect(await count('auth.users', `id = '${ANA}'`)).toBe(1);
   });
 });
+
+describe('friends', () => {
+  const EDA = '00000000-0000-0000-0000-0000000000e1';
+  const FLO = '00000000-0000-0000-0000-0000000000f1';
+  const GON = '00000000-0000-0000-0000-000000000091';
+  type Row = { id: string; username: string; public_id: string; state: string };
+  const add = async (me: string, who: string) =>
+    (await as(me, 'select * from public.add_friend($1)', [who])).rows[0] as { status: string; username: string | null };
+  const list = async (me: string) =>
+    ((await as(me, 'select * from public.my_friends()')).rows as Row[]).map((r) => `${r.username}:${r.state}`);
+
+  beforeAll(async () => {
+    await signUp(EDA, { name: 'Eda' });
+    await signUp(FLO, { name: 'Flo' });
+    await signUp(GON, { name: 'Gon' });
+  });
+
+  it('a request is sent by username in any letter case, and waits for an answer', async () => {
+    expect(await add(EDA, '  fLO ')).toEqual({ status: 'sent', username: 'Flo' });
+    expect(await list(EDA)).toEqual(['Flo:outgoing']);
+    expect(await list(FLO)).toEqual(['Eda:incoming']);
+    // asking again changes nothing
+    expect(await add(EDA, 'Flo')).toEqual({ status: 'waiting', username: 'Flo' });
+    expect(await list(FLO)).toEqual(['Eda:incoming']);
+  });
+
+  it('accepting makes both friends; the list comes with the other player and their id', async () => {
+    await as(FLO, 'select public.accept_friend($1)', [EDA]);
+    expect(await list(EDA)).toEqual(['Flo:friend']);
+    expect(await list(FLO)).toEqual(['Eda:friend']);
+    expect(await add(FLO, 'Eda')).toEqual({ status: 'already', username: 'Eda' });
+    const row = (await as(EDA, 'select * from public.my_friends()')).rows[0] as Row;
+    expect(row).toMatchObject({ id: FLO, username: 'Flo', public_id: (await profile(FLO)).public_id });
+  });
+
+  it('a request can be sent by player id; asking somebody who asked you makes you friends at once', async () => {
+    expect(await add(GON, (await profile(EDA)).public_id)).toEqual({ status: 'sent', username: 'Eda' });
+    expect(await list(EDA)).toEqual(['Gon:incoming', 'Flo:friend']);
+    expect(await add(EDA, 'Gon')).toEqual({ status: 'friends', username: 'Gon' });
+    expect(await list(EDA)).toEqual(['Flo:friend', 'Gon:friend']);
+    expect(await list(GON)).toEqual(['Eda:friend']);
+  });
+
+  it('says so when there is nobody by that name or id, and when it is you', async () => {
+    expect(await add(EDA, 'Nobody_Here')).toEqual({ status: 'not_found', username: null });
+    expect(await add(EDA, '99999999')).toEqual({ status: 'not_found', username: null });
+    expect(await add(EDA, '')).toEqual({ status: 'not_found', username: null });
+    expect(await add(EDA, 'eda')).toEqual({ status: 'yourself', username: 'Eda' });
+  });
+
+  it('an id is looked for before a name, so a name of eight digits cannot hide a player', async () => {
+    const id = (await profile(GON)).public_id;
+    await as(FLO, `update public.profiles set username = $1 where id = $2`, [id, FLO]);
+    expect(await add(FLO, id)).toMatchObject({ status: 'sent', username: 'Gon' });
+    await as(FLO, 'select public.remove_friend($1)', [GON]);
+    await as(FLO, `update public.profiles set username = 'Flo' where id = $1`, [FLO]);
+  });
+
+  it('removing ends a friendship for both, takes a request back, or declines one', async () => {
+    await as(GON, 'select public.remove_friend($1)', [EDA]);
+    expect(await list(EDA)).toEqual(['Flo:friend']);
+    expect(await list(GON)).toEqual([]);
+
+    // taking a request back
+    await add(GON, 'Flo');
+    await as(GON, 'select public.remove_friend($1)', [FLO]);
+    expect(await list(FLO)).toEqual(['Eda:friend']);
+    // declining one; after that it cannot be accepted any more
+    await add(GON, 'Flo');
+    await as(FLO, 'select public.remove_friend($1)', [GON]);
+    await as(FLO, 'select public.accept_friend($1)', [GON]);
+    expect(await list(GON)).toEqual([]);
+  });
+
+  it('nobody can accept for somebody else, or make themselves a friend without being asked', async () => {
+    await add(GON, 'Flo');
+    // Gon accepts "his own" request, Eda accepts one that is not hers: nothing happens
+    await as(GON, 'select public.accept_friend($1)', [FLO]);
+    await as(EDA, 'select public.accept_friend($1)', [GON]);
+    expect(await list(FLO)).toEqual(['Gon:incoming', 'Eda:friend']);
+    expect(await list(GON)).toEqual(['Flo:outgoing']);
+    await as(GON, 'select public.remove_friend($1)', [FLO]);
+  });
+
+  it('is closed to visitors, and the table cannot be read or written directly', async () => {
+    for (const call of ["add_friend('Eda')", `accept_friend('${EDA}')`, `remove_friend('${EDA}')`, 'my_friends()']) {
+      await expect(as(null, `select public.${call}`)).rejects.toThrow(/permission denied/);
+    }
+    for (const who of [EDA, null]) {
+      await expect(as(who, 'select * from public.friendships')).rejects.toThrow(/permission denied/);
+      await expect(
+        as(who, 'insert into public.friendships (requester, addressee, accepted) values ($1, $2, true)', [GON, FLO]),
+      ).rejects.toThrow(/permission denied/);
+    }
+  });
+
+  it('holds back a player who floods others with requests', async () => {
+    const SPAM = '00000000-0000-0000-0000-0000000000aa';
+    await signUp(SPAM, { name: 'Spammer' });
+    for (let i = 0; i < 50; i++) {
+      const id = `00000000-0000-0000-0001-${String(i).padStart(12, '0')}`;
+      await signUp(id, { name: `Crowd${i}` });
+      expect((await add(SPAM, `Crowd${i}`)).status).toBe('sent');
+    }
+    expect(await add(SPAM, 'Eda')).toEqual({ status: 'full', username: 'Eda' });
+    // an answer makes room again
+    await as('00000000-0000-0000-0001-000000000000', 'select public.accept_friend($1)', [SPAM]);
+    expect((await add(SPAM, 'Eda')).status).toBe('sent');
+    await as(SPAM, 'select public.delete_account()');
+  });
+
+  it('a deleted account disappears from its friends lists', async () => {
+    expect(await list(FLO)).toEqual(['Eda:friend']);
+    await as(EDA, 'select public.delete_account()');
+    expect(await list(FLO)).toEqual([]);
+  });
+});

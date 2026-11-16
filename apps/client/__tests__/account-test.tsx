@@ -8,7 +8,7 @@ import { LobbyRoom } from '@/components/LobbyRoom';
 import { PlayerPanel } from '@/components/PlayerPanel';
 
 // The app's one account is swapped for one over a stand-in service, different in each test.
-const mockHolder: { account: Account | null } = { account: null };
+const mockHolder: { account: Account | null; requests: number } = { account: null, requests: 0 };
 jest.mock('@/account', () => ({
   get account() {
     return mockHolder.account;
@@ -18,6 +18,10 @@ jest.mock('@/account', () => ({
     const current = mockHolder.account!;
     return useSyncExternalStore(current.subscribe, current.get, current.get);
   },
+  useFriends: () => ({
+    status: 'ready',
+    people: Array.from({ length: mockHolder.requests }, (_, i) => ({ id: `r${i}`, state: 'incoming' })),
+  }),
 }));
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn() },
@@ -104,6 +108,7 @@ async function started(start: Parameters<typeof fakeBackend>[0] = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   mockHolder.account = new Account(null);
+  mockHolder.requests = 0;
 });
 
 describe('names', () => {
@@ -270,6 +275,21 @@ describe('the account card on the home screen', () => {
 
     await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
     expect(screen.getByRole('button', { name: 'Sign in with Google' })).toBeTruthy();
+  });
+
+  it('opens your friends, and counts the requests waiting for an answer', async () => {
+    const { router } = jest.requireMock('expo-router') as { router: { push: jest.Mock } };
+    mockHolder.account = (await started({ signedIn: true })).account;
+    const first = await render(<AccountCard />);
+    expect(screen.queryByTestId('requests-badge')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Friends' }));
+    expect(router.push).toHaveBeenCalledWith('/people');
+    await first.unmount();
+
+    mockHolder.requests = 2;
+    await render(<AccountCard />);
+    expect(screen.getByTestId('requests-badge')).toHaveTextContent('2');
+    expect(screen.getByRole('button', { name: 'Friends, 2 requests' })).toBeTruthy();
   });
 
   it('deletes your account only after asking, and then says it is gone', async () => {

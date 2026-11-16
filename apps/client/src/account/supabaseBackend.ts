@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { AuthBackend, Profile } from './account';
+import type { AddStatus, FriendsBackend, Person } from './friends';
 
 type Row = { id: string; public_id: string; username: string; avatar_url: string | null };
 const COLUMNS = 'id, public_id, username, avatar_url';
@@ -15,7 +16,7 @@ const toProfile = (row: Row): Profile => ({
  * `profiles` table from supabase/migrations. The sign-in is remembered by the browser and
  * picked up again when the player comes back from Google.
  */
-export function supabaseBackend(url: string, key: string): AuthBackend {
+export function supabaseBackend(url: string, key: string): AuthBackend & { friends: FriendsBackend } {
   const client = createClient(url, key, {
     auth: { flowType: 'pkce', detectSessionInUrl: true, persistSession: true, autoRefreshToken: true },
   });
@@ -57,6 +58,28 @@ export function supabaseBackend(url: string, key: string): AuthBackend {
       // The account is gone, so there is nothing left to sign out of on the service: just forget it here.
       await client.auth.signOut({ scope: 'local' });
       return true;
+    },
+    // Friends go through the database's own functions (supabase/migrations), which only act for the caller.
+    friends: {
+      list: async () => {
+        const { data, error } = await client.rpc('my_friends');
+        if (error) throw new Error(error.message);
+        return (data as (Row & { state: Person['state'] })[]).map((row) => ({ ...toProfile(row), state: row.state }));
+      },
+      add: async (who) => {
+        const { data, error } = await client.rpc('add_friend', { who });
+        const answer = (data as { status: AddStatus; username: string | null }[] | null)?.[0];
+        if (error || !answer) throw new Error(error?.message ?? 'No answer');
+        return answer;
+      },
+      accept: async (id) => {
+        const { error } = await client.rpc('accept_friend', { who: id });
+        if (error) throw new Error(error.message);
+      },
+      remove: async (id) => {
+        const { error } = await client.rpc('remove_friend', { who: id });
+        if (error) throw new Error(error.message);
+      },
     },
   };
 }
