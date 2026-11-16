@@ -11,3 +11,6 @@ Thumbs.db
 .expo/
 playwright-report/
 test-results/
+
+# Left behind by the Supabase command-line tool.
+supabase/.temp/

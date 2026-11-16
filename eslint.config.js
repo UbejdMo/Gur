@@ -36,7 +36,7 @@ export default tseslint.config(
     languageOptions: { globals: globals.jest },
   },
   {
-    files: ['apps/client/e2e/**/*.mjs'],
+    files: ['apps/client/e2e/**/*.mjs', 'apps/server/scripts/**/*.mjs'],
     languageOptions: { globals: globals.node },
   },
   prettier,

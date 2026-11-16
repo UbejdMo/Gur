@@ -7,7 +7,7 @@ This is done once, by whoever owns the game. It takes about 15 minutes and costs
 ## 1. The Supabase project
 
 1. Create an account at [supabase.com](https://supabase.com) and a **new project** (the free plan is enough). Pick a region close to the players (Frankfurt is next to the game server). The database password it asks for is not needed by the game; keep it somewhere safe.
-2. Open **SQL Editor** and run every file in [`supabase/migrations`](../supabase/migrations), one after the other in the order of their numbers: start a new query, paste the whole file, press **Run**. They make the table of profiles and the rules for who may change what. Each is safe to run again. When a later version of the game adds a file there, it has to be run the same way before that version is used.
+2. Set up the database. Either let GitHub do it (see [The database keeps itself up to date](#the-database-keeps-itself-up-to-date) below), or do it by hand: open **SQL Editor** and run every file in [`supabase/migrations`](../supabase/migrations), one after the other in the order of their numbers (new query, paste the whole file, **Run**). They make the table of profiles and the rules for who may change what.
 
 ## 2. Google
 
@@ -48,6 +48,24 @@ They go in two places:
 | The game server | `SUPABASE_URL` and `SUPABASE_KEY` in `render.yaml`                                       |
 
 Once that is merged, the web game shows **Sign in with Google** on its first screen, and the game server's address (opened in a browser) answers `Gur game server: ok (accounts on)`. If it still says `guests only`, the server was not made from `render.yaml`: add the two values by hand under **Environment** in the Render dashboard.
+
+## The database keeps itself up to date
+
+Changes to the database are files in `supabase/migrations`. After every merge into `main`, once the checks have passed, the **Deploy** workflow applies the files the database has not seen yet, in the order of their numbers, and only then publishes the web game. If a file fails, it is undone as a whole and the deploy stops; nothing is left half-done.
+
+For that, GitHub needs the database's address, password included. It is set once:
+
+1. In Supabase, press **Connect** at the top of the project and choose **Session pooler**. Copy the address; it looks like `postgresql://postgres.<project>:[YOUR-PASSWORD]@aws-...pooler.supabase.com:5432/postgres`. (The "Direct connection" does not work from GitHub.)
+2. Replace `[YOUR-PASSWORD]` with the database password. If you do not have it any more, make a new one under **Database > Settings > Reset database password**; nothing in the game uses it. A password of letters and digits only saves trouble: other characters have to be written in a special way inside an address.
+3. In the GitHub repository, open **Settings > Secrets and variables > Actions**, press **New repository secret**, name it `SUPABASE_DB_URL`, paste the address and save.
+
+This address opens the whole database. It belongs in that secret and nowhere else: not in the code, not in a chat, not in an issue.
+
+Without the secret the workflow leaves the database alone and says so; new files then have to be run by hand in the SQL Editor.
+
+The first run applies the files that were run by hand before; that is harmless, they are written to be safe to run again. From then on the database remembers what it has seen (in `supabase_migrations.schema_migrations`), so a file is applied exactly once and must never be changed after it was merged: a change is a new file.
+
+Every pull request rehearses the update first (`pnpm --filter @gur/server rehearse:migrations`): the same tool applies all the files to a database made for the test.
 
 ## How it fits together
 
