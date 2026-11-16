@@ -76,6 +76,14 @@ export default function Home() {
         <Text style={styles.buttonText}>Play against bots</Text>
       </Pressable>
 
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => router.push('/friends')}
+        style={({ pressed }) => [styles.button, styles.buttonFriends, pressed && styles.buttonPressed]}
+      >
+        <Text style={styles.buttonText}>Play with friends</Text>
+      </Pressable>
+
       <FullscreenButton />
       {cramped && !fullscreen.active && (
         <Text style={styles.note} testID="install-tip">
@@ -84,8 +92,6 @@ export default function Home() {
             : 'For a bigger table, add Gur to your home screen: tap Share, then "Add to Home Screen". It then opens like an app, without the address bar.'}
         </Text>
       )}
-
-      <Text style={styles.note}>Playing with friends and online is coming next.</Text>
     </ScrollView>
   );
 }
@@ -110,6 +116,7 @@ const styles = StyleSheet.create({
   optionTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   optionHint: { color: colors.textMuted, fontSize: 12 },
   button: { backgroundColor: colors.accent, paddingVertical: 14, paddingHorizontal: 32, borderRadius: 28 },
+  buttonFriends: { backgroundColor: colors.meld },
   buttonPressed: { opacity: 0.8 },
   buttonText: { fontSize: 17, fontWeight: '800', color: '#2A2A2A' },
   note: { fontSize: 13, color: colors.textMuted, textAlign: 'center', maxWidth: 320 },

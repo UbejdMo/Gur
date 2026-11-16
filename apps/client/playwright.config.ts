@@ -1,9 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const PORT = 8090;
+/** The game server the tests start for playing with friends. The app is pointed at it in e2e/friends.spec.ts. */
+export const SERVER_PORT = 3190;
 
 /**
- * Browser tests against the exported web build (run `pnpm build` first; Turbo does this in CI).
+ * Browser tests against the exported web build and the built game server
+ * (run `pnpm build` first; Turbo does this in CI).
  */
 export default defineConfig({
   testDir: './e2e',
@@ -20,11 +23,20 @@ export default defineConfig({
     { name: 'phone', use: { ...devices['Pixel 7'] } },
     { name: 'phone-sideways', use: { ...devices['Pixel 7 landscape'] } },
   ],
-  webServer: {
-    command: `pnpm exec expo serve --port ${PORT}`,
-    url: `http://localhost:${PORT}`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
-    env: { EXPO_OFFLINE: '1' },
-  },
+  webServer: [
+    {
+      command: `pnpm exec expo serve --port ${PORT}`,
+      url: `http://localhost:${PORT}`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+      env: { EXPO_OFFLINE: '1' },
+    },
+    {
+      command: 'node ../server/dist/index.js',
+      url: `http://localhost:${SERVER_PORT}/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+      env: { PORT: String(SERVER_PORT) },
+    },
+  ],
 });

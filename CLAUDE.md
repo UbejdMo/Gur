@@ -4,11 +4,11 @@ Gur is a closed-hand tile rummy game, played the way it is in Kosovo, for web, A
 
 ## Layout
 
-| Path              | What it is                                                                                                                                                                                                                       |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/engine` | The rules: tiles, joker, melds, closing hands, turns, scoring, plus simple bots (`src/bot.ts`). Pure TypeScript, no dependencies. Used by the server (authoritative) and the app (offline bots).                                 |
-| `apps/client`     | Expo app (Expo Router) for web, Android and iOS. Screens in `src/app/`, components in `src/components/`, game state hooks in `src/game/`. See `apps/client/AGENTS.md` for Expo-specific guidance.                                |
-| `apps/server`     | Node game server (Socket.IO): lobbies with codes, authoritative play, turn timer, bots for empty seats. `src/lobby.ts` holds the logic, `src/server.ts` the network, `src/protocol.ts` the messages (the app imports its types). |
+| Path              | What it is                                                                                                                                                                                                                                         |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/engine` | The rules: tiles, joker, melds, closing hands, turns, scoring, plus simple bots (`src/bot.ts`). Pure TypeScript, no dependencies. Used by the server (authoritative) and the app (offline bots).                                                   |
+| `apps/client`     | Expo app (Expo Router) for web, Android and iOS. Screens in `src/app/`, components in `src/components/`, the practice game and rack in `src/game/`, playing with friends in `src/online/`. See `apps/client/AGENTS.md` for Expo-specific guidance. |
+| `apps/server`     | Node game server (Socket.IO): lobbies with codes, authoritative play, turn timer, bots for empty seats. `src/lobby.ts` holds the logic, `src/server.ts` the network, `src/protocol.ts` the messages (the app imports its types).                   |
 
 ## Commands
 
@@ -20,7 +20,7 @@ Run from the repo root. Node 22 and pnpm 9 (via `corepack enable`).
 - One package: `pnpm --filter @gur/engine test`
 - `pnpm dev` builds the engine and starts the Expo dev server (press `w` for web, or scan the QR code with Expo Go)
 - `pnpm dev:server` builds the engine and starts the game server on port 3001, restarting when its code changes
-- `pnpm test:e2e` builds the web app and runs the Playwright browser tests (desktop, phone upright and phone sideways)
+- `pnpm test:e2e` builds the web app and the server and runs the Playwright browser tests (desktop, phone upright and phone sideways). The tests start their own game server and play with two browsers against it.
 - Add Expo packages from `apps/client` with `pnpm exec expo install <package>`, never plain `pnpm add`, so versions match the Expo SDK.
 - Stay on TypeScript 6.x until typescript-eslint supports TypeScript 7. Keep `@types/node` on 22.x to match Node 22. Dependabot is configured to skip both, and to skip Expo-pinned packages (upgrade those with `pnpm exec expo install --fix`).
 
@@ -36,6 +36,8 @@ Run from the repo root. Node 22 and pnpm 9 (via `corepack enable`).
   - The indicator can be taken instead of drawing, but only when it completes the hand (the 15 tiles then hold a closing hand), and the player must close on that turn. The app never hints at when that is. If their time runs out after taking it, the game closes for them.
   - 12-13-1 is a table option; 13-1-2 is never valid.
 - The server is authoritative: clients send intentions, the server validates them with `@gur/engine`. Never trust a client's game state. A player is only ever sent their own view (`playerView` in the engine): never another rack, never the order of the middle. Anything a player may be told is refused with a `LobbyError`, whose message is shown to that player.
+- One table, two sources: `GameTable` draws a `TableModel` (a `PlayerView` plus the rack and the actions). `usePracticeGame` builds it from a game on the device, `useOnlineTable` from the server's state. A change to the table must work for both, and for 2, 3 and 4 players.
+- The app talks to the game server through `src/online/connection.ts` only. The server's address is `DEFAULT_SERVER` in `src/online/config.ts`; `EXPO_PUBLIC_SERVER_URL` overrides it at build time (a local server is `http://localhost:3001`).
 - Engine functions are pure: they return a new state and never mutate their input. Illegal moves throw `RuleError`.
 - The app imports the engine's built output, so the engine must be built first (`pnpm dev` and Turbo do this).
 - Every screen element a test needs gets a `testID` or an accessibility label; tests query by role and label first.
