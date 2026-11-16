@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { account, useAccount } from '@/account';
+import { account, useAccount, useFriends } from '@/account';
 import { colors } from '@/theme';
 
 /** Where the player comes back to after signing in with Google: this page, without its query. */
@@ -17,6 +17,8 @@ function returnAddress(): string {
  */
 export function AccountCard() {
   const { available, status, profile } = useAccount();
+  // Requests waiting for an answer are counted on the Friends button.
+  const asking = useFriends().people.filter((p) => p.state === 'incoming').length;
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -105,6 +107,22 @@ export function AccountCard() {
           </Text>
         </View>
       </View>
+
+      {!deleting && !editing && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={asking ? `Friends, ${asking} ${asking === 1 ? 'request' : 'requests'}` : 'Friends'}
+          onPress={() => router.push('/people')}
+          style={({ pressed }) => [styles.friends, pressed && styles.pressed]}
+        >
+          <Text style={styles.friendsText}>Friends</Text>
+          {asking > 0 && (
+            <View style={styles.badge} testID="requests-badge">
+              <Text style={styles.badgeText}>{asking}</Text>
+            </View>
+          )}
+        </Pressable>
+      )}
 
       {deleting ? (
         <>
@@ -217,6 +235,26 @@ const styles = StyleSheet.create({
   quiet: { paddingVertical: 8, paddingHorizontal: 6, marginLeft: 'auto', justifyContent: 'center' },
   quietText: { color: colors.textMuted, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
   warning: { color: colors.text, fontSize: 14, lineHeight: 20 },
+  friends: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.meld,
+    paddingVertical: 10,
+    borderRadius: 22,
+  },
+  friendsText: { fontSize: 15, fontWeight: '800', color: '#2A2A2A' },
+  badge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    backgroundColor: colors.jokerBox,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: { color: colors.text, fontSize: 12, fontWeight: '800' },
   input: {
     backgroundColor: colors.tile,
     color: '#1B1B1B',

@@ -73,6 +73,7 @@ Every pull request rehearses the update first (`pnpm --filter @gur/server rehear
 - The first sign-in makes the player's profile by itself: the Google name without spaces (four digits are added if it is taken), a random eight-digit ID, the Google picture. The player can change the name; the ID never changes.
 - When a signed-in player opens or joins a lobby, the app sends the token along. The game server asks Supabase whose token it is and reads that player's profile, so a name and picture at the table cannot be made up. A player without a token is a guest under the name they typed.
 - A player can delete their account on the first screen. That removes the sign-in and the profile from Supabase at once; the player's own request to the database does it (`delete_account` in `0002_delete_account.sql`), so no secret key is involved.
+- Friends (`0003_friends.sql`): a player asks another by username or ID, the other accepts or declines. The app calls four functions in the database; the table behind them cannot be read or written directly, so a player only ever sees and changes what is between them and somebody else.
 - Signing in works in the web game. The Android and iOS apps get it with their store builds.
 
 ## Trying it without a Supabase project
