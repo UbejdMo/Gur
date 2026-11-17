@@ -224,3 +224,92 @@ describe('the connection to the game server', () => {
     }
   });
 });
+
+describe('being reachable for friends', () => {
+  const token = () => Promise.resolve('token-1');
+
+  it('signed in, the line opens and the server is told who you are, again after every reconnect', async () => {
+    const { socket, connection } = setup({}, token);
+    connection.setPresent(true);
+    expect(connection.get().status).toBe('connecting');
+    socket.fire('connect');
+    await settle();
+    expect(socket.last('hello').payload).toEqual({ token: 'token-1' });
+    // setting it again changes nothing
+    connection.setPresent(true);
+    await settle();
+    expect(socket.sent.filter((s) => s.event === 'hello')).toHaveLength(1);
+
+    socket.fire('disconnect');
+    socket.fire('connect');
+    await settle();
+    expect(socket.sent.filter((s) => s.event === 'hello')).toHaveLength(2);
+  });
+
+  it('signing out tells the server and hangs up, unless you are in a lobby', async () => {
+    const { socket, connection } = setup({}, token);
+    connection.setPresent(true);
+    socket.fire('connect');
+    await settle();
+    connection.setPresent(false);
+    expect(socket.last('hello').payload).toEqual({ token: null });
+    expect(socket.connected).toBe(false);
+    expect(connection.get().status).toBe('idle');
+
+    // in a lobby the line stays: the game goes on
+    const other = setup({}, token);
+    other.connection.setPresent(true);
+    other.socket.fire('connect');
+    await settle();
+    const asked = other.connection.create('Ana');
+    await settle();
+    other.socket.last('create').reply({ ok: true, code: 'ABCDE', memberId: 'key-1' });
+    await asked;
+    other.connection.setPresent(false);
+    expect(other.socket.connected).toBe(true);
+  });
+
+  it('leaving a lobby while signed in keeps the line, so invites still arrive', async () => {
+    const { socket, connection } = setup({}, token);
+    connection.setPresent(true);
+    socket.fire('connect');
+    await settle();
+    const asked = connection.create('Ana');
+    await settle();
+    socket.last('create').reply({ ok: true, code: 'ABCDE', memberId: 'key-1' });
+    await asked;
+    const left = connection.leave();
+    socket.last('leave').reply({ ok: true });
+    await left;
+    expect(connection.get().lobby).toBeNull();
+    expect(socket.connected).toBe(true);
+  });
+
+  it('passes invitations on, and sends invites with your token', async () => {
+    const { socket, connection } = setup({}, token);
+    const got: unknown[] = [];
+    const stop = connection.onInvite((invite) => got.push(invite));
+    connection.setPresent(true);
+    socket.fire('connect');
+    const invite = { code: 'ABCDE', from: { name: 'Ben', avatarUrl: null }, seconds: 10 };
+    socket.fire('invited', invite);
+    expect(got).toEqual([invite]);
+    stop();
+    socket.fire('invited', invite);
+    expect(got).toHaveLength(1);
+
+    const sent = connection.invite('user-ben');
+    await settle();
+    expect(socket.last('invite').payload).toEqual({ userId: 'user-ben', token: 'token-1' });
+    socket.last('invite').reply({ ok: true, seconds: 10 });
+    expect(await sent).toEqual({ ok: true, seconds: 10 });
+  });
+
+  it('says nothing to the server when there is no token to give', async () => {
+    const { socket, connection } = setup({}, () => Promise.resolve(null));
+    connection.setPresent(true);
+    socket.fire('connect');
+    await settle();
+    expect(socket.sent.filter((s) => s.event === 'hello')).toHaveLength(0);
+  });
+});

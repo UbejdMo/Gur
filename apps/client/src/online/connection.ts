@@ -4,9 +4,12 @@
  *
  * It remembers which lobby you are in and your key to it, so a lost connection, or a page
  * reloaded by accident, puts you back in your seat.
+ *
+ * A signed-in player stays connected while the app is open ("present"), so friends can
+ * invite them into a lobby; a guest is only connected while in a lobby.
  */
 import { io } from 'socket.io-client';
-import type { Ack, ClientToServerEvents, GameAction, LobbySettings, LobbyState } from '@gur/server/protocol';
+import type { Ack, ClientToServerEvents, GameAction, Invite, LobbySettings, LobbyState } from '@gur/server/protocol';
 import { account } from '@/account';
 import { serverUrl } from './config';
 
@@ -74,6 +77,11 @@ export class Connection {
   private session: Session | null = null;
   private snapshot: OnlineSnapshot = { status: 'idle', lobby: null, clockOffset: 0, notice: null };
   private readonly listeners = new Set<() => void>();
+  private readonly inviteListeners = new Set<(invite: Invite) => void>();
+  /** Signed in with the app open: the server knows, so friends can invite you. */
+  private present = false;
+  /** The server has been told who you are on the current connection. */
+  private greeted = false;
 
   constructor(
     private readonly connect: () => SocketLike = () =>
@@ -148,13 +156,40 @@ export class Connection {
     return this.request('action', action);
   }
 
-  /** Leaves the lobby for good and hangs up. */
+  /** Leaves the lobby for good. Hangs up too, unless friends should still be able to reach you. */
   async leave(): Promise<void> {
     if (this.socket?.connected) await this.request('leave');
     this.forget(null);
-    this.socket?.disconnect();
-    this.socket = null;
-    this.update({ status: 'idle' });
+    if (!this.present) this.hangUp();
+  }
+
+  // ---------- friends ----------
+
+  /**
+   * Signed in (true) or not (false). While signed in the line stays open and the server is
+   * told who you are, so friends can invite you; signing out tells it to forget that.
+   */
+  setPresent(present: boolean): void {
+    if (present === this.present) return;
+    this.present = present;
+    if (present) {
+      void this.hello();
+    } else if (this.socket) {
+      this.greeted = false;
+      if (this.socket.connected) this.socket.emit('hello', { token: null }, () => undefined);
+      if (!this.session) this.hangUp();
+    }
+  }
+
+  /** Calls `listener` with every invitation into a friend's lobby. Returns a way to stop. */
+  onInvite(listener: (invite: Invite) => void): () => void {
+    this.inviteListeners.add(listener);
+    return () => this.inviteListeners.delete(listener);
+  }
+
+  /** Host only: invites a friend (their account id) into your lobby. */
+  async invite(userId: string): Promise<Ack<{ seconds: number }>> {
+    return this.request<{ seconds: number }>('invite', await this.signed({ userId }));
   }
 
   // ---------- the line ----------
@@ -167,6 +202,7 @@ export class Connection {
 
     socket.on('connect', () => {
       this.update({ status: 'online' });
+      if (this.present) void this.hello();
       // Back after a dropped connection: take the seat again.
       const session = this.session;
       if (session && this.snapshot.lobby) {
@@ -176,12 +212,33 @@ export class Connection {
       }
     });
     socket.on('disconnect', () => {
-      if (this.socket === socket) this.update({ status: 'offline' });
+      if (this.socket !== socket) return;
+      this.greeted = false;
+      this.update({ status: 'offline' });
     });
     socket.on('state', (lobby: LobbyState) => {
       this.update({ lobby, clockOffset: lobby.now - this.now(), notice: null });
     });
+    socket.on('invited', (invite: Invite) => {
+      for (const listener of [...this.inviteListeners]) listener(invite);
+    });
     return socket;
+  }
+
+  /** Tells the server who you are, so friends can reach you. Again after every reconnect. */
+  private async hello(): Promise<void> {
+    const socket = this.open();
+    const token = await this.getToken().catch(() => null);
+    if (!this.present || this.socket !== socket || !socket.connected || !token || this.greeted) return;
+    this.greeted = true;
+    socket.emit('hello', { token }, () => undefined);
+  }
+
+  private hangUp(): void {
+    this.greeted = false;
+    this.socket?.disconnect();
+    this.socket = null;
+    this.update({ status: 'idle' });
   }
 
   /** Sends a request and waits for the server's answer. Never throws: no answer is an answer too. */

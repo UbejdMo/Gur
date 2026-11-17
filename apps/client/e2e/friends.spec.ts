@@ -47,11 +47,12 @@ test('two friends meet in a lobby by code and play a turn each', async ({ browse
 
   // Ben joins with the code, typed in lower case
   await ben.getByLabel('Your name').fill('Ben');
+  await ben.getByRole('button', { name: 'Join a lobby' }).click();
   await ben.getByLabel('Lobby code').fill(code.toLowerCase());
   await ben.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(ben.getByTestId('lobby-code')).toHaveText(code);
   await expect(ben.getByTestId('member')).toHaveCount(2);
-  await expect(ben.getByTestId('waiting-for-host')).toHaveText(/Waiting for Ana/);
+  await expect(ben.getByTestId('waiting-for-host')).toHaveText(/Waiting for the lobby leader \(Ana\)/);
   await expect(ana.getByTestId('member')).toHaveCount(2);
   await expect(ana.getByTestId('members')).toContainText('Ben');
 
@@ -108,6 +109,7 @@ test('a player who reloads the page gets back to their seat', async ({ browser }
   await ana.getByRole('button', { name: 'Create a lobby' }).click();
   const code = (await ana.getByTestId('lobby-code').textContent())!;
   await ben.getByLabel('Your name').fill('Ben');
+  await ben.getByRole('button', { name: 'Join a lobby' }).click();
   await ben.getByLabel('Lobby code').fill(code);
   await ben.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(ana.getByTestId('member')).toHaveCount(2);
@@ -127,6 +129,7 @@ test('a player who reloads the page gets back to their seat', async ({ browser }
 
 test('a wrong code is refused with a reason', async ({ browser }, testInfo) => {
   const page = await player(browser, testInfo.project.use);
+  await page.getByRole('button', { name: 'Join a lobby' }).click();
   await page.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(page.getByTestId('friends-error')).toHaveText('Please choose a name');
   await page.getByLabel('Your name').fill('Ana');

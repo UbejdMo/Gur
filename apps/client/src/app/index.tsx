@@ -1,98 +1,87 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { tileId } from '@gur/engine';
-import { AccountCard } from '@/components/AccountCard';
-import { FullscreenButton } from '@/components/FullscreenButton';
+import { BotsSetup } from '@/components/BotsSetup';
 import { PageLink } from '@/components/PageLink';
-import { Tile } from '@/components/Tile';
+import { PlayCard } from '@/components/PlayCard';
+import { Popover } from '@/components/Popover';
+import { TopBar } from '@/components/TopBar';
+import { loadBotSettings, playAddress, saveBotSettings } from '@/game/botSettings';
 import { inPhoneBrowser, useFullscreen } from '@/hooks/useFullscreen';
 import { colors } from '@/theme';
 
-const DECOR = [tileId('red', 7), tileId('yellow', 8), tileId('blue', 9), 104];
+// Bots play a run with the joker in it; friends sit together like a set of one number.
+const BOT_TILES = [tileId('blue', 9), 104, tileId('blue', 11)] as const;
+const FRIEND_TILES = [tileId('red', 7), tileId('yellow', 7), tileId('black', 7)] as const;
 
+/**
+ * The first screen: the name of the game and two big stones, one for playing against bots and
+ * one for playing with friends. Your profile, friends and messages are at the top right.
+ */
 export default function Home() {
-  const [aceHigh, setAceHigh] = useState(true);
-  const [slowBots, setSlowBots] = useState(true);
   const insets = useSafeAreaInsets();
+  const screen = useWindowDimensions();
   const fullscreen = useFullscreen();
   // In a phone's browser the address bar takes room the table needs: say how to get rid of it.
   const [cramped] = useState(inPhoneBrowser);
+  const [botsOpen, setBotsOpen] = useState(false);
+  const [botSettings] = useState(loadBotSettings);
+
+  // Side by side whenever both fit; one above the other on a very narrow screen.
+  const room = Math.min(screen.width, 960) - insets.left - insets.right - 40;
+  const sideBySide = room >= 320;
+  // A phone held sideways is short: a smaller title and smaller stones, so both fit without scrolling.
+  const short = screen.height < 520;
+  const cardWidth = Math.floor(sideBySide ? Math.min(short ? 210 : 250, (room - 28) / 2) : Math.min(300, room));
 
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={[
         styles.content,
+        short && styles.contentShort,
         {
-          paddingTop: 24 + insets.top,
+          paddingTop: 12 + insets.top,
           paddingBottom: 24 + insets.bottom,
-          paddingLeft: 24 + insets.left,
-          paddingRight: 24 + insets.right,
+          paddingLeft: 20 + insets.left,
+          paddingRight: 20 + insets.right,
         },
       ]}
     >
-      <Text style={styles.title} accessibilityRole="header">
-        Gur
-      </Text>
-      <Text style={styles.subtitle}>Tile rummy, the Kosovo way</Text>
+      <TopBar />
 
-      <View style={styles.decor}>
-        {DECOR.map((id) => (
-          <Tile key={id} id={id} />
-        ))}
+      <View style={[styles.hero, short && styles.heroShort]}>
+        <Text style={[styles.title, short && styles.titleShort]} accessibilityRole="header">
+          Gur
+        </Text>
+        <Text style={styles.subtitle}>Tile rummy, the Kosovo way</Text>
       </View>
 
-      <AccountCard />
-
-      <View style={styles.option}>
-        <View style={styles.optionText}>
-          <Text style={styles.optionTitle}>Allow 12-13-1</Text>
-          <Text style={styles.optionHint}>Some areas count 12, 13, 1 as a run. 13-1-2 never counts.</Text>
-        </View>
-        <Switch
-          accessibilityLabel="Allow 12-13-1"
-          value={aceHigh}
-          onValueChange={setAceHigh}
-          trackColor={{ true: colors.accent, false: colors.tableDark }}
+      <View style={[styles.cards, !sideBySide && styles.cardsStacked]}>
+        <PlayCard
+          title="Play against bots"
+          subtitle="Three bots, on this device"
+          tiles={BOT_TILES}
+          tilt={-4}
+          width={cardWidth}
+          onPress={() => setBotsOpen(true)}
+        />
+        <PlayCard
+          title="Play with friends"
+          subtitle="Create a lobby or join one"
+          tiles={FRIEND_TILES}
+          tilt={4}
+          width={cardWidth}
+          onPress={() => router.push('/friends')}
         />
       </View>
 
-      <View style={styles.option}>
-        <View style={styles.optionText}>
-          <Text style={styles.optionTitle}>Bots take their time</Text>
-          <Text style={styles.optionHint}>Each bot takes up to 10 seconds, so you can arrange your tiles.</Text>
-        </View>
-        <Switch
-          accessibilityLabel="Bots take their time"
-          value={slowBots}
-          onValueChange={setSlowBots}
-          trackColor={{ true: colors.accent, false: colors.tableDark }}
-        />
-      </View>
-
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => router.push(`/play?aceHigh=${aceHigh ? 1 : 0}${slowBots ? '' : '&bots=fast'}`)}
-        style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-      >
-        <Text style={styles.buttonText}>Play against bots</Text>
-      </Pressable>
-
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => router.push('/friends')}
-        style={({ pressed }) => [styles.button, styles.buttonFriends, pressed && styles.buttonPressed]}
-      >
-        <Text style={styles.buttonText}>Play with friends</Text>
-      </Pressable>
-
-      <FullscreenButton />
       {cramped && !fullscreen.active && (
         <Text style={styles.note} testID="install-tip">
           {fullscreen.supported
-            ? 'For the biggest table, play full screen. Or add Gur to your home screen from the browser menu: it then opens like an app, without the address bar.'
+            ? 'For the biggest table, play full screen (the button at the top left). Or add Gur to your home screen from the browser menu: it then opens like an app, without the address bar.'
             : 'For a bigger table, add Gur to your home screen: tap Share, then "Add to Home Screen". It then opens like an app, without the address bar.'}
         </Text>
       )}
@@ -107,35 +96,34 @@ export default function Home() {
           <PageLink page="terms.html">Terms of service</PageLink>
         </View>
       </View>
+
+      <Popover title="Play against bots" place="centre" open={botsOpen} onClose={() => setBotsOpen(false)}>
+        <BotsSetup
+          initial={botSettings}
+          onStart={(settings) => {
+            saveBotSettings(settings);
+            setBotsOpen(false);
+            router.push(playAddress(settings));
+          }}
+        />
+      </Popover>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.table },
-  content: { alignItems: 'center', padding: 24, gap: 20 },
-  title: { fontSize: 56, fontWeight: '900', color: colors.text, letterSpacing: 2, marginTop: 40 },
-  subtitle: { fontSize: 16, color: colors.textMuted, marginTop: -12 },
-  decor: { flexDirection: 'row', gap: 6, marginVertical: 8 },
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: colors.tableDark,
-    borderRadius: 12,
-    padding: 14,
-    width: '100%',
-    maxWidth: 360,
-  },
-  optionText: { flex: 1, gap: 2 },
-  optionTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  optionHint: { color: colors.textMuted, fontSize: 12 },
-  button: { backgroundColor: colors.accent, paddingVertical: 14, paddingHorizontal: 32, borderRadius: 28 },
-  buttonFriends: { backgroundColor: colors.meld },
-  buttonPressed: { opacity: 0.8 },
-  buttonText: { fontSize: 17, fontWeight: '800', color: '#2A2A2A' },
-  note: { fontSize: 13, color: colors.textMuted, textAlign: 'center', maxWidth: 320 },
-  footer: { alignItems: 'center', gap: 6, marginTop: 12, maxWidth: 360 },
+  content: { flexGrow: 1, alignItems: 'center', gap: 28, width: '100%', maxWidth: 960, alignSelf: 'center' },
+  contentShort: { gap: 14 },
+  hero: { alignItems: 'center', gap: 4, marginTop: 8 },
+  heroShort: { marginTop: -44 },
+  titleShort: { fontSize: 46 },
+  title: { fontSize: 72, fontWeight: '900', color: colors.text, letterSpacing: 3 },
+  subtitle: { fontSize: 16, color: colors.textMuted },
+  cards: { flexDirection: 'row', gap: 28, justifyContent: 'center', alignItems: 'flex-start', paddingVertical: 8 },
+  cardsStacked: { flexDirection: 'column', alignItems: 'center' },
+  note: { fontSize: 13, color: colors.textMuted, textAlign: 'center', maxWidth: 340 },
+  footer: { alignItems: 'center', gap: 6, marginTop: 'auto', maxWidth: 360 },
   about: { fontSize: 13, color: colors.textMuted, textAlign: 'center' },
   links: { flexDirection: 'row', gap: 8, alignItems: 'center' },
 });

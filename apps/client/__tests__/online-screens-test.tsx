@@ -80,6 +80,21 @@ describe('Home', () => {
 });
 
 describe('Play with friends', () => {
+  it('starts with the choice: create a lobby or join one', async () => {
+    await render(<Friends />);
+    expect(screen.getByRole('button', { name: 'Create a lobby' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Join a lobby' })).toBeOnTheScreen();
+    expect(screen.queryByLabelText('Lobby code')).toBeNull();
+    // joining asks for the code; Back returns to the choice, and then to the first screen
+    await fireEvent.press(screen.getByRole('button', { name: 'Join a lobby' }));
+    expect(screen.getByLabelText('Lobby code')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Create a lobby' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByRole('button', { name: 'Create a lobby' })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Back' }));
+    expect(mocks().router.replace).toHaveBeenCalledWith('/');
+  });
+
   it('remembers your name, opens a lobby and goes to it', async () => {
     const { online, router } = mocks();
     online.create.mockResolvedValue({ ok: true, code: 'WRCCS' });
@@ -94,6 +109,7 @@ describe('Play with friends', () => {
     const { online, router } = mocks();
     online.join.mockResolvedValue({ ok: false, error: 'No lobby has that code. Check it and try again' });
     await render(<Friends />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Join a lobby' }));
     await fireEvent.changeText(screen.getByLabelText('Lobby code'), 'wrccs');
     expect(screen.getByLabelText('Lobby code')).toHaveProp('value', 'WRCCS');
     await fireEvent.press(screen.getByRole('button', { name: 'Join' }));
@@ -109,6 +125,7 @@ describe('Play with friends', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Create a lobby' }));
     expect(screen.getByTestId('friends-error')).toHaveTextContent('Please choose a name');
     await fireEvent.changeText(screen.getByLabelText('Your name'), 'Ben');
+    await fireEvent.press(screen.getByRole('button', { name: 'Join a lobby' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Join' }));
     expect(screen.getByTestId('friends-error')).toHaveTextContent(/Type the code/);
     expect(online.create).not.toHaveBeenCalled();
@@ -128,11 +145,14 @@ describe('Play with friends', () => {
 
 describe('the waiting room', () => {
   const ok = jest.fn(async (): Promise<Ack> => ({ ok: true }));
+  const invite = jest.fn(async (): Promise<Ack<{ seconds: number }>> => ({ ok: true, seconds: 10 }));
 
   it('shows the code, who is here and the free seats; the host sets the options and starts', async () => {
     const onSettings = jest.fn(async (): Promise<Ack> => ({ ok: true }));
     const onStart = jest.fn(async (): Promise<Ack> => ({ ok: true }));
-    await render(<LobbyRoom lobby={lobby()} onSettings={onSettings} onStart={onStart} onLeave={jest.fn()} />);
+    await render(
+      <LobbyRoom lobby={lobby()} onSettings={onSettings} onStart={onStart} onLeave={jest.fn()} onInvite={invite} />,
+    );
     expect(screen.getByTestId('lobby-code')).toHaveTextContent('WRCCS');
     expect(screen.getAllByTestId('member')).toHaveLength(3);
     expect(screen.getByText('Ana (you)')).toBeOnTheScreen();
@@ -150,14 +170,21 @@ describe('the waiting room', () => {
     expect(onStart).toHaveBeenCalledTimes(1);
   });
 
-  it('a guest waits for the host and cannot change anything', async () => {
-    const onSettings = jest.fn(async (): Promise<Ack> => ({ ok: true }));
-    await render(<LobbyRoom lobby={lobby({ you: 1 })} onSettings={onSettings} onStart={ok} onLeave={jest.fn()} />);
-    expect(screen.getByTestId('waiting-for-host')).toHaveTextContent('Waiting for Ana to start the game…');
+  it('the others see the code and the players, and wait for the lobby leader: no options, no invites', async () => {
+    await render(
+      <LobbyRoom lobby={lobby({ you: 1 })} onSettings={ok} onStart={ok} onLeave={jest.fn()} onInvite={invite} />,
+    );
+    expect(screen.getByTestId('lobby-code')).toHaveTextContent('WRCCS');
+    expect(screen.getAllByTestId('member')).toHaveLength(3);
+    expect(within(screen.getAllByTestId('member')[0]!).getByText('Leader')).toBeOnTheScreen();
+    expect(screen.getByTestId('waiting-for-host')).toHaveTextContent(
+      'Waiting for the lobby leader (Ana) to start the game…',
+    );
     expect(screen.queryByRole('button', { name: 'Start the game' })).toBeNull();
-    expect(screen.getByLabelText('Allow 12-13-1')).toHaveProp('disabled', true);
-    await fireEvent.press(screen.getByRole('radio', { name: '3 rounds' }));
-    expect(onSettings).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Allow 12-13-1')).toBeNull();
+    expect(screen.queryByLabelText('Fill empty seats with bots')).toBeNull();
+    expect(screen.queryByRole('radio', { name: '3 rounds' })).toBeNull();
+    expect(screen.queryByTestId('invite-friends')).toBeNull();
   });
 
   it('alone, the host is told what is missing; with bots the empty seats say so', async () => {
@@ -165,13 +192,17 @@ describe('the waiting room', () => {
       members: [{ name: 'Ana', bot: false, connected: true, host: true, avatarUrl: null, publicId: null }],
     });
     const onStart = jest.fn(async (): Promise<Ack> => ({ ok: true }));
-    const view = await render(<LobbyRoom lobby={alone} onSettings={ok} onStart={onStart} onLeave={jest.fn()} />);
+    const view = await render(
+      <LobbyRoom lobby={alone} onSettings={ok} onStart={onStart} onLeave={jest.fn()} onInvite={invite} />,
+    );
     expect(screen.getByText(/You need at least 2 players/)).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole('button', { name: 'Start the game' }));
     expect(onStart).not.toHaveBeenCalled();
 
     const withBots = { ...alone, settings: { ...alone.settings, fillWithBots: true } };
-    await view.rerender(<LobbyRoom lobby={withBots} onSettings={ok} onStart={onStart} onLeave={jest.fn()} />);
+    await view.rerender(
+      <LobbyRoom lobby={withBots} onSettings={ok} onStart={onStart} onLeave={jest.fn()} onInvite={invite} />,
+    );
     expect(screen.getAllByText('A bot will sit here')).toHaveLength(3);
     await fireEvent.press(screen.getByRole('button', { name: 'Start the game' }));
     expect(onStart).toHaveBeenCalledTimes(1);
@@ -182,7 +213,7 @@ describe('the waiting room', () => {
     away.members[2] = { ...away.members[2]!, connected: false };
     const onLeave = jest.fn();
     const refuse = jest.fn(async (): Promise<Ack> => ({ ok: false, error: 'This game has already started' }));
-    await render(<LobbyRoom lobby={away} onSettings={ok} onStart={refuse} onLeave={onLeave} />);
+    await render(<LobbyRoom lobby={away} onSettings={ok} onStart={refuse} onLeave={onLeave} onInvite={invite} />);
     expect(within(screen.getAllByTestId('member')[2]!).getByText('Away')).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole('button', { name: 'Start the game' }));
     expect(screen.getByTestId('lobby-error')).toHaveTextContent('This game has already started');

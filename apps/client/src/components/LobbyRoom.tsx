@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Image, Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Ack, LobbySettings, LobbyState } from '@gur/server/protocol';
-import { avatarColor, initialOf } from './PlayerPanel';
+import { Avatar } from './Avatar';
+import { InviteFriends } from './InviteFriends';
+import { avatarColor } from './PlayerPanel';
 import { colors } from '@/theme';
 
 type Props = {
@@ -10,13 +12,18 @@ type Props = {
   onSettings: (change: Partial<LobbySettings>) => Promise<Ack>;
   onStart: () => Promise<Ack>;
   onLeave: () => void;
+  /** The leader invites a friend (their account id). */
+  onInvite: (userId: string) => Promise<Ack<{ seconds: number }>>;
 };
 
 const ROUNDS = [1, 3, 5] as const;
 const SEATS = 4;
 
-/** The waiting room: the code to share, who has joined, the options, and the start button. */
-export function LobbyRoom({ lobby, onSettings, onStart, onLeave }: Props) {
+/**
+ * The waiting room. Everybody sees the code and who has joined. The lobby leader (who created
+ * it) also invites friends, chooses the options and starts the game; the others wait for them.
+ */
+export function LobbyRoom({ lobby, onSettings, onStart, onLeave, onInvite }: Props) {
   const insets = useSafeAreaInsets();
   const [error, setError] = useState<string | null>(null);
   const [shared, setShared] = useState<'shared' | 'copied' | null>(null);
@@ -88,77 +95,76 @@ export function LobbyRoom({ lobby, onSettings, onStart, onLeave }: Props) {
           }
           return (
             <View key={i} style={styles.member} testID="member">
-              {member.avatarUrl ? (
-                <Image
-                  source={{ uri: member.avatarUrl }}
-                  style={styles.avatar}
-                  testID={`picture-${i}`}
-                  accessibilityIgnoresInvertColors
-                />
-              ) : (
-                <View style={[styles.avatar, { backgroundColor: avatarColor(i) }]}>
-                  <Text style={styles.initial}>{initialOf(member.name)}</Text>
-                </View>
-              )}
+              <Avatar
+                name={member.name}
+                url={member.avatarUrl}
+                size={36}
+                color={avatarColor(i)}
+                testID={`picture-${i}`}
+              />
               <Text style={styles.name} numberOfLines={1}>
                 {member.name}
                 {i === lobby.you ? ' (you)' : ''}
               </Text>
-              {member.host && <Text style={styles.tag}>Host</Text>}
+              {member.host && <Text style={styles.tag}>Leader</Text>}
               {!member.connected && <Text style={[styles.tag, styles.tagAway]}>Away</Text>}
             </View>
           );
         })}
       </View>
 
-      <View style={styles.card}>
-        <View style={styles.option}>
-          <View style={styles.optionText}>
-            <Text style={styles.optionTitle}>Allow 12-13-1</Text>
-            <Text style={styles.optionHint}>Some areas count 12, 13, 1 as a run. 13-1-2 never counts.</Text>
+      {you.host && <InviteFriends lobby={lobby} onInvite={onInvite} />}
+
+      {/* Only the leader chooses the options, so only the leader sees them. */}
+      {you.host && (
+        <View style={styles.card}>
+          <View style={styles.option}>
+            <View style={styles.optionText}>
+              <Text style={styles.optionTitle}>Allow 12-13-1</Text>
+              <Text style={styles.optionHint}>Some areas count 12, 13, 1 as a run. 13-1-2 never counts.</Text>
+            </View>
+            <Switch
+              accessibilityLabel="Allow 12-13-1"
+              value={settings.aceHigh}
+              onValueChange={(aceHigh) => void run(onSettings({ aceHigh }))}
+              trackColor={{ true: colors.accent, false: colors.tableDark }}
+            />
           </View>
-          <Switch
-            accessibilityLabel="Allow 12-13-1"
-            value={settings.aceHigh}
-            disabled={!you.host}
-            onValueChange={(aceHigh) => void run(onSettings({ aceHigh }))}
-            trackColor={{ true: colors.accent, false: colors.tableDark }}
-          />
+          <View style={styles.option}>
+            <View style={styles.optionText}>
+              <Text style={styles.optionTitle}>Fill empty seats with bots</Text>
+              <Text style={styles.optionHint}>The table always has four players.</Text>
+            </View>
+            <Switch
+              accessibilityLabel="Fill empty seats with bots"
+              value={settings.fillWithBots}
+              onValueChange={(fillWithBots) => void run(onSettings({ fillWithBots }))}
+              trackColor={{ true: colors.accent, false: colors.tableDark }}
+            />
+          </View>
+          <View style={styles.option}>
+            <View style={styles.optionText}>
+              <Text style={styles.optionTitle}>Rounds</Text>
+              <Text style={styles.optionHint}>Points add up over the rounds; lowest total wins.</Text>
+            </View>
+            <View style={styles.rounds} accessibilityRole="radiogroup" accessibilityLabel="Rounds">
+              {ROUNDS.map((n) => (
+                <Pressable
+                  key={n}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`${n} round${n === 1 ? '' : 's'}`}
+                  accessibilityState={{ checked: settings.rounds === n }}
+                  aria-checked={settings.rounds === n}
+                  onPress={() => void run(onSettings({ rounds: n }))}
+                  style={[styles.round, settings.rounds === n && styles.roundOn]}
+                >
+                  <Text style={[styles.roundText, settings.rounds === n && styles.roundTextOn]}>{n}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
         </View>
-        <View style={styles.option}>
-          <View style={styles.optionText}>
-            <Text style={styles.optionTitle}>Fill empty seats with bots</Text>
-            <Text style={styles.optionHint}>The table always has four players.</Text>
-          </View>
-          <Switch
-            accessibilityLabel="Fill empty seats with bots"
-            value={settings.fillWithBots}
-            disabled={!you.host}
-            onValueChange={(fillWithBots) => void run(onSettings({ fillWithBots }))}
-            trackColor={{ true: colors.accent, false: colors.tableDark }}
-          />
-        </View>
-        <View style={styles.option}>
-          <View style={styles.optionText}>
-            <Text style={styles.optionTitle}>Rounds</Text>
-            <Text style={styles.optionHint}>Points add up over the rounds; lowest total wins.</Text>
-          </View>
-          <View style={styles.rounds} accessibilityRole="radiogroup" accessibilityLabel="Rounds">
-            {ROUNDS.map((n) => (
-              <Pressable
-                key={n}
-                accessibilityRole="radio"
-                accessibilityLabel={`${n} round${n === 1 ? '' : 's'}`}
-                accessibilityState={{ checked: settings.rounds === n, disabled: !you.host }}
-                onPress={() => you.host && void run(onSettings({ rounds: n }))}
-                style={[styles.round, settings.rounds === n && styles.roundOn]}
-              >
-                <Text style={[styles.roundText, settings.rounds === n && styles.roundTextOn]}>{n}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      </View>
+      )}
 
       {you.host ? (
         <>
@@ -174,7 +180,7 @@ export function LobbyRoom({ lobby, onSettings, onStart, onLeave }: Props) {
         </>
       ) : (
         <Text style={styles.waiting} testID="waiting-for-host">
-          Waiting for {host?.name ?? 'the host'} to start the game…
+          Waiting for the lobby leader{host ? ` (${host.name})` : ''} to start the game…
         </Text>
       )}
       {error && (

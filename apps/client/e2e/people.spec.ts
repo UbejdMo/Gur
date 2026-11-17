@@ -1,27 +1,5 @@
 import { expect, test } from '@playwright/test';
-import type { Browser } from '@playwright/test';
-import { ACCOUNTS_KEY, ACCOUNTS_PORT, SERVER_PORT } from '../playwright.config';
-
-/** A signed-in player in a browser of their own (accounts are the stand-in from e2e/fake-supabase.mjs). */
-async function signedIn(browser: Browser, contextOptions: Parameters<Browser['newContext']>[0]) {
-  const context = await browser.newContext(contextOptions);
-  await context.addInitScript(
-    ({ server, accounts }) => {
-      Object.assign(window, { __GUR_SERVER__: server, __GUR_ACCOUNTS__: accounts });
-    },
-    {
-      server: `http://localhost:${SERVER_PORT}`,
-      accounts: { url: `http://localhost:${ACCOUNTS_PORT}`, key: ACCOUNTS_KEY },
-    },
-  );
-  await context.route('https://pictures.test/**', (route) => route.abort());
-  const page = await context.newPage();
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Sign in with Google' }).click();
-  const name = (await page.getByTestId('account-name').textContent())!;
-  const id = (await page.getByTestId('account-id').textContent())!.replace('ID ', '');
-  return { page, name, id };
-}
+import { signedIn } from './helpers';
 
 test('two players become friends: one asks by ID, the other accepts; later one removes the other', async ({
   browser,
@@ -31,6 +9,7 @@ test('two players become friends: one asks by ID, the other accepts; later one r
 
   // Ana asks Ben by his ID
   await ana.page.getByRole('button', { name: 'Friends', exact: true }).click();
+  await expect(ana.page.getByTestId('friends-panel')).toBeVisible();
   await expect(ana.page.getByRole('heading', { name: 'Friends', exact: true })).toBeVisible();
   await expect(ana.page.getByTestId('friends-list')).toContainText('Nobody yet');
   await ana.page.getByLabel('Username or ID').fill('no_such_player');
@@ -51,8 +30,8 @@ test('two players become friends: one asks by ID, the other accepts; later one r
   await expect(ben.page.getByTestId('friends-list')).toContainText(ana.name);
   await expect(ben.page.getByTestId('requests')).toHaveCount(0);
 
-  // Ana has Ben as a friend now (she comes back to the page); asking again says so
-  await ana.page.getByRole('button', { name: 'Back', exact: true }).click();
+  // Ana has Ben as a friend now (she opens her friends again); asking again says so
+  await ana.page.getByRole('button', { name: 'Close friends' }).click();
   await ana.page.getByRole('button', { name: 'Friends', exact: true }).click();
   await expect(ana.page.getByTestId('friends-list')).toContainText(ben.name);
   await expect(ana.page.getByTestId('sent')).toHaveCount(0);
@@ -64,7 +43,7 @@ test('two players become friends: one asks by ID, the other accepts; later one r
   await ana.page.getByRole('button', { name: `Remove ${ben.name}`, exact: true }).click();
   await ana.page.getByRole('button', { name: `Yes, remove ${ben.name}` }).click();
   await expect(ana.page.getByTestId('friends-list')).toContainText('Nobody yet');
-  await ben.page.getByRole('button', { name: 'Back', exact: true }).click();
+  await ben.page.getByRole('button', { name: 'Close friends' }).click();
   await expect(ben.page.getByTestId('requests-badge')).toHaveCount(0);
   await ben.page.getByRole('button', { name: 'Friends', exact: true }).click();
   await expect(ben.page.getByTestId('friends-list')).toContainText('Nobody yet');

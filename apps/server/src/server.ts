@@ -15,10 +15,11 @@ import { LobbyError } from './lobby';
 import type { Lobby, SignedInPlayer } from './lobby';
 import type { Ack, ClientToServerEvents, ServerToClientEvents } from './protocol';
 
-/** Which lobby and which player a connection speaks for. */
+/** Which lobby and which player a connection speaks for, and whose app it is (signed-in players). */
 interface Seat {
   code?: string;
   memberId?: string;
+  userId?: string;
 }
 type GameSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, Seat>;
 
@@ -32,6 +33,15 @@ export interface GameServerConfig extends Omit<LobbiesConfig, 'onChange'> {
    * Without it the server has no accounts: everybody plays as a guest under the name they type.
    */
   verify?: (token: string) => Promise<SignedInPlayer | null>;
+  /**
+   * Whether the player whose token this is and the player with account id `userId` are
+   * friends. Without it nobody can be invited.
+   */
+  areFriends?: (token: string, userId: string) => Promise<boolean>;
+  /** How long an invitation lasts, in milliseconds. */
+  inviteMs?: number;
+  /** The clock, for invitations (tests set their own). */
+  now?: () => number;
 }
 
 export interface GameServer {
@@ -42,6 +52,10 @@ export interface GameServer {
 }
 
 const room = (memberId: string) => `member:${memberId}`;
+/** Every connection of one signed-in player: their open apps, in any tab or on any device. */
+const userRoom = (userId: string) => `user:${userId}`;
+const ACCOUNT_ID = /^[0-9a-f-]{36}$/i;
+export const INVITE_MS = 10_000;
 
 export function createGameServer(config: GameServerConfig = {}): GameServer {
   const http = createServer((req, res) => {
@@ -88,6 +102,11 @@ export function createGameServer(config: GameServerConfig = {}): GameServer {
     if (!player) throw new LobbyError('Your sign-in has expired. Please sign in again');
     return player;
   };
+
+  const inviteMs = config.inviteMs ?? INVITE_MS;
+  const now = config.now ?? Date.now;
+  /** Invitations still running: lobby code and invited account -> when they run out. */
+  const invites = new Map<string, number>();
 
   /** The lobby and player this connection speaks for. */
   const seatOf = (socket: GameSocket) => {
@@ -192,6 +211,49 @@ export function createGameServer(config: GameServerConfig = {}): GameServer {
     );
 
     socket.on('leave', (reply) => answer(reply, () => release(socket, true)));
+
+    socket.on('hello', (request, reply) =>
+      answer(reply, async () => {
+        const player = request?.token ? await identify(request.token) : undefined;
+        if (socket.data.userId) void socket.leave(userRoom(socket.data.userId));
+        socket.data.userId = player?.userId;
+        if (player) void socket.join(userRoom(player.userId));
+      }),
+    );
+
+    socket.on('invite', (request, reply) =>
+      answer(reply, async () => {
+        const userId = request?.userId;
+        if (typeof userId !== 'string' || !ACCOUNT_ID.test(userId)) throw new LobbyError('That player does not exist');
+        const { lobby, memberId } = seatOf(socket);
+        const host = lobby.checkInvite(memberId, userId);
+        // The token proves who is asking; the friends list in the database decides who may be asked.
+        const player = await identify(request?.token);
+        if (!player || player.userId !== host.userId)
+          throw new LobbyError('Your sign-in has expired. Please sign in again');
+        if (!config.areFriends || !(await config.areFriends(request.token as string, userId))) {
+          throw new LobbyError('You can only invite your friends');
+        }
+        // Checking took a moment: the lobby may have changed meanwhile.
+        lobby.checkInvite(memberId, userId);
+        const key = `${lobby.code}:${userId}`;
+        const time = now();
+        for (const [k, until] of invites) if (until <= time) invites.delete(k);
+        if ((invites.get(key) ?? 0) > time)
+          throw new LobbyError('You invited them already. Wait until the invite runs out');
+        if (!io.sockets.adapter.rooms.get(userRoom(userId))?.size) {
+          throw new LobbyError('Your friend does not have the game open right now');
+        }
+        invites.set(key, time + inviteMs);
+        const seconds = Math.round(inviteMs / 1000);
+        io.to(userRoom(userId)).emit('invited', {
+          code: lobby.code,
+          from: { name: host.username, avatarUrl: host.avatarUrl },
+          seconds,
+        });
+        return { seconds };
+      }),
+    );
 
     socket.on('disconnect', () => release(socket, false));
   });

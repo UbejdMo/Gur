@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import type * as ReactModule from 'react';
 import { Friends, addMessage } from '@/account/friends';
 import type { AddStatus, FriendsBackend, Person } from '@/account/friends';
-import People from '@/app/people';
+import { FriendsPanel } from '@/components/FriendsPanel';
 
 // The app's friends list is swapped for one over a stand-in service, different in each test.
 const mockHolder: { friends: Friends | null; signedIn: boolean } = { friends: null, signedIn: true };
@@ -25,6 +25,8 @@ jest.mock('@/account', () => ({
   },
 }));
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), replace: jest.fn() } }));
+
+const ME = { id: 'me', publicId: '48213377', username: 'Ana', avatarUrl: null };
 
 const person = (username: string, state: Person['state'], avatarUrl: string | null = null): Person => ({
   id: `id-${username}`,
@@ -157,21 +159,14 @@ describe('the friends list', () => {
   });
 });
 
-describe('the Friends screen', () => {
+describe('the friends panel', () => {
   async function open(start: Parameters<typeof fakeBackend>[0] = {}) {
     const fake = fakeBackend(start);
     mockHolder.friends = new Friends(fake.backend);
     await mockHolder.friends.refresh();
-    await render(<People />);
+    await render(<FriendsPanel profile={ME} />);
     return fake;
   }
-
-  it('tells a guest to sign in', async () => {
-    mockHolder.signedIn = false;
-    await render(<People />);
-    expect(screen.getByTestId('people-guest')).toHaveTextContent(/Sign in on the first screen/);
-    expect(screen.queryByLabelText('Username or ID')).toBeNull();
-  });
 
   it('shows how friends can add you, and says so while you have none', async () => {
     await open();
@@ -232,12 +227,5 @@ describe('the Friends screen', () => {
     await fireEvent.changeText(screen.getByLabelText('Username or ID'), 'Ben');
     await fireEvent.press(screen.getByRole('button', { name: 'Send request' }));
     expect(screen.getByTestId('people-message')).toHaveTextContent(/did not work/);
-  });
-
-  it('goes back to the first screen', async () => {
-    const { router } = jest.requireMock('expo-router') as { router: { replace: jest.Mock } };
-    await open();
-    await fireEvent.press(screen.getByRole('button', { name: 'Back' }));
-    expect(router.replace).toHaveBeenCalledWith('/');
   });
 });

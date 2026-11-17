@@ -11,6 +11,8 @@ export function Table({ onMenu, ...options }: Props) {
   return (
     <GameTable
       table={p}
+      onLeave={onMenu}
+      leaveNote="This game against the bots ends here."
       overlay={
         p.view.status !== 'playing' && (
           <ResultsOverlay

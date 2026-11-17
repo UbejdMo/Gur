@@ -44,3 +44,25 @@ export function supabaseVerifier(url: string, key: string, fetcher: typeof fetch
     };
   };
 }
+
+export type FriendsCheck = (token: string, userId: string) => Promise<boolean>;
+
+/**
+ * Asks the database whether the player whose token this is has `userId` among their friends
+ * (accepted, not just asked). It reads the player's own list, as the app does, so it can see
+ * nothing the player could not.
+ */
+export function supabaseFriendsCheck(url: string, key: string, fetcher: typeof fetch = fetch): FriendsCheck {
+  const base = url.replace(/\/+$/, '');
+  return async (token, userId) => {
+    const answer = await fetcher(`${base}/rest/v1/rpc/my_friends`, {
+      method: 'POST',
+      headers: { apikey: key, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: '{}',
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!answer.ok) return false;
+    const rows = (await answer.json()) as { id?: unknown; state?: unknown }[];
+    return Array.isArray(rows) && rows.some((row) => row.id === userId && row.state === 'friend');
+  };
+}
