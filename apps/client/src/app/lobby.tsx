@@ -53,7 +53,13 @@ export default function LobbyScreen() {
     );
   }
   return (
-    <LobbyRoom lobby={lobby} onSettings={(c) => online.settings(c)} onStart={() => online.start()} onLeave={leave} />
+    <LobbyRoom
+      lobby={lobby}
+      onSettings={(c) => online.settings(c)}
+      onStart={() => online.start()}
+      onLeave={leave}
+      onInvite={(userId) => online.invite(userId)}
+    />
   );
 }
 

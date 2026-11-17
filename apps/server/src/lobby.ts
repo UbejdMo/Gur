@@ -136,6 +136,22 @@ export class Lobby {
     return member.id;
   }
 
+  /**
+   * Checks that the player may invite somebody with an account into this lobby now, and
+   * returns their own account. Only the host can, only before the game, and only while
+   * there is room. Throws LobbyError with the reason otherwise.
+   */
+  checkInvite(memberId: string, userId: string): SignedInPlayer {
+    this.assertHost(memberId);
+    const host = this.member(memberId);
+    if (!host.account) throw new LobbyError('Sign in to invite your friends');
+    if (this.game) throw new LobbyError('The game has already started');
+    if (host.account.userId === userId) throw new LobbyError('You are already in the lobby');
+    if (this.seatOfAccount(userId)) throw new LobbyError('Your friend is already in the lobby');
+    if (this.members.length >= MAX_PLAYERS) throw new LobbyError('The lobby is full');
+    return host.account;
+  }
+
   /** The seat a signed-in player already has in this lobby (their secret id), or null. */
   seatOfAccount(userId: string): string | null {
     return this.humans().find((m) => m.account?.userId === userId)?.id ?? null;

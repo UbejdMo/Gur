@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { safePictureUrl, supabaseVerifier } from '../src/verify';
+import { safePictureUrl, supabaseFriendsCheck, supabaseVerifier } from '../src/verify';
 
 const USER = '11111111-2222-3333-4444-555555555555';
 const json = (body: unknown, status = 200) =>
@@ -83,5 +83,43 @@ describe('checking a sign-in with Supabase', () => {
     const profiles = json([{ username: 'AnaK', public_id: '48213377', avatar_url: 'javascript:alert(1)' }]);
     const verify = supabaseVerifier('https://abc.supabase.co', 'key', supabase({ profiles }) as typeof fetch);
     expect((await verify('t'))!.avatarUrl).toBeNull();
+  });
+});
+
+describe('checking friends with Supabase', () => {
+  const BEN = '00000000-0000-4000-8000-0000000000b1';
+  function fakeFetch(status: number, rows: unknown) {
+    return vi.fn(
+      async (..._args: Parameters<typeof fetch>) =>
+        new Response(JSON.stringify(rows), { status, headers: { 'content-type': 'application/json' } }),
+    );
+  }
+
+  it("reads the asking player's own friends list with their token", async () => {
+    const fetcher = fakeFetch(200, [
+      { id: BEN, state: 'friend' },
+      { id: 'other', state: 'incoming' },
+    ]);
+    const check = supabaseFriendsCheck('https://p.supabase.co/', 'sb_publishable_x', fetcher as typeof fetch);
+    expect(await check('token-ana', BEN)).toBe(true);
+    const [address, init] = fetcher.mock.calls[0]!;
+    expect(address).toBe('https://p.supabase.co/rest/v1/rpc/my_friends');
+    expect(init?.method).toBe('POST');
+    expect(init?.headers).toMatchObject({ apikey: 'sb_publishable_x', Authorization: 'Bearer token-ana' });
+  });
+
+  it('a request that was not accepted yet, somebody else, or a refusal is not a friend', async () => {
+    const asked = supabaseFriendsCheck(
+      'https://p',
+      'k',
+      fakeFetch(200, [{ id: BEN, state: 'outgoing' }]) as typeof fetch,
+    );
+    expect(await asked('t', BEN)).toBe(false);
+    const empty = supabaseFriendsCheck('https://p', 'k', fakeFetch(200, []) as typeof fetch);
+    expect(await empty('t', BEN)).toBe(false);
+    const refused = supabaseFriendsCheck('https://p', 'k', fakeFetch(401, { message: 'no' }) as typeof fetch);
+    expect(await refused('t', BEN)).toBe(false);
+    const odd = supabaseFriendsCheck('https://p', 'k', fakeFetch(200, { not: 'a list' }) as typeof fetch);
+    expect(await odd('t', BEN)).toBe(false);
   });
 });

@@ -7,8 +7,9 @@ import { online } from '@/online/connection';
 import { colors } from '@/theme';
 
 /**
- * Play with friends: choose a name, then open a lobby or join one with its code.
- * `?code=ABCDE` fills the code in, so an invitation can be a link.
+ * Play with friends. First the choice: create a lobby, or join one. Joining then asks for the
+ * code. A guest also types the name they play under; a signed-in player plays under their own.
+ * `?code=ABCDE` goes straight to joining with the code filled in, so an invitation can be a link.
  */
 export default function Friends() {
   const insets = useSafeAreaInsets();
@@ -18,6 +19,7 @@ export default function Friends() {
   const [typed, setName] = useState(() => online.savedName());
   const name = profile?.username ?? typed;
   const [code, setCode] = useState(() => (params.code ?? '').toUpperCase());
+  const [step, setStep] = useState<'choose' | 'join'>(() => (params.code ? 'join' : 'choose'));
   const [busy, setBusy] = useState<'create' | 'join' | null>(null);
   const [slow, setSlow] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,40 +93,55 @@ export default function Friends() {
         )}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Start a new lobby</Text>
-        <Text style={styles.hint}>You get a code to share. Up to four players.</Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => void go('create')}
-          style={({ pressed }) => [styles.primary, busy !== null && styles.dim, pressed && styles.pressed]}
-        >
-          <Text style={styles.primaryText}>{busy === 'create' ? 'Creating…' : 'Create a lobby'}</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Join a friend</Text>
-        <TextInput
-          accessibilityLabel="Lobby code"
-          value={code}
-          onChangeText={(text) => setCode(text.toUpperCase())}
-          maxLength={8}
-          autoCapitalize="characters"
-          autoCorrect={false}
-          placeholder="CODE"
-          placeholderTextColor={colors.textMuted}
-          style={[styles.input, styles.codeInput]}
-          onSubmitEditing={() => void go('join')}
-        />
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => void go('join')}
-          style={({ pressed }) => [styles.primary, busy !== null && styles.dim, pressed && styles.pressed]}
-        >
-          <Text style={styles.primaryText}>{busy === 'join' ? 'Joining…' : 'Join'}</Text>
-        </Pressable>
-      </View>
+      {step === 'choose' ? (
+        <View style={styles.choices}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Create a lobby"
+            onPress={() => void go('create')}
+            style={({ pressed }) => [styles.choice, busy !== null && styles.dim, pressed && styles.pressed]}
+          >
+            <Text style={styles.choiceTitle}>{busy === 'create' ? 'Creating…' : 'Create a lobby'}</Text>
+            <Text style={styles.choiceHint}>You choose the rules, invite friends and start the game.</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Join a lobby"
+            onPress={() => {
+              setError(null);
+              setStep('join');
+            }}
+            style={({ pressed }) => [styles.choice, styles.choiceJoin, pressed && styles.pressed]}
+          >
+            <Text style={styles.choiceTitle}>Join a lobby</Text>
+            <Text style={styles.choiceHint}>Type the code a friend gave you.</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Join a lobby</Text>
+          <TextInput
+            accessibilityLabel="Lobby code"
+            value={code}
+            onChangeText={(text) => setCode(text.toUpperCase())}
+            maxLength={8}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            autoFocus={!params.code}
+            placeholder="CODE"
+            placeholderTextColor={colors.textMuted}
+            style={[styles.input, styles.codeInput]}
+            onSubmitEditing={() => void go('join')}
+          />
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => void go('join')}
+            style={({ pressed }) => [styles.primary, busy !== null && styles.dim, pressed && styles.pressed]}
+          >
+            <Text style={styles.primaryText}>{busy === 'join' ? 'Joining…' : 'Join'}</Text>
+          </Pressable>
+        </View>
+      )}
 
       {slow && (
         <Text style={styles.hint} testID="waking">
@@ -137,7 +154,15 @@ export default function Friends() {
         </Text>
       )}
 
-      <Pressable accessibilityRole="button" onPress={() => router.replace('/')} style={styles.secondary}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => {
+          setError(null);
+          if (step === 'join') setStep('choose');
+          else router.replace('/');
+        }}
+        style={styles.secondary}
+      >
         <Text style={styles.secondaryText}>Back</Text>
       </Pressable>
     </ScrollView>
@@ -162,6 +187,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   codeInput: { textAlign: 'center', letterSpacing: 6, fontSize: 24 },
+  choices: { width: '100%', maxWidth: 380, gap: 14 },
+  choice: { backgroundColor: colors.accent, borderRadius: 18, paddingVertical: 18, paddingHorizontal: 18, gap: 4 },
+  choiceJoin: { backgroundColor: colors.meld },
+  choiceTitle: { color: '#2A2A2A', fontSize: 20, fontWeight: '900' },
+  choiceHint: { color: '#3B3B3B', fontSize: 13 },
   primary: { backgroundColor: colors.accent, paddingVertical: 12, borderRadius: 24, alignItems: 'center' },
   primaryText: { fontSize: 16, fontWeight: '800', color: '#2A2A2A' },
   back: { backgroundColor: colors.meld, paddingVertical: 12, paddingHorizontal: 28, borderRadius: 24 },

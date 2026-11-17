@@ -83,8 +83,29 @@ export interface ClientToServerEvents {
   /** Host only: start the next round now, or go back to the lobby once the match is over. */
   next: (reply: Reply) => void;
   leave: (reply: Reply) => void;
+  /**
+   * A signed-in player says they have the game open, so friends can invite them; `token: null`
+   * (signing out) takes that back. Sent again after every reconnect.
+   */
+  hello: (request: { token: string | null }, reply: Reply) => void;
+  /**
+   * Host only, before the game: invites a friend (their account id, `Person.id` in the app)
+   * into your lobby. `token` is yours: the server checks with it that you are friends. The
+   * invite lasts `seconds`; until then it cannot be sent again.
+   */
+  invite: (request: { userId: string; token?: string | null }, reply: Reply<{ seconds: number }>) => void;
+}
+
+/** An invitation into a friend's lobby. */
+export interface Invite {
+  code: string;
+  /** Who invites you. */
+  from: { name: string; avatarUrl: string | null };
+  /** How long it lasts from now. */
+  seconds: number;
 }
 
 export interface ServerToClientEvents {
   state: (state: LobbyState) => void;
+  invited: (invite: Invite) => void;
 }

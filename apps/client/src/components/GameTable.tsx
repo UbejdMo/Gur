@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { tileId } from '@gur/engine';
 import { DiscardRow } from './DiscardRow';
 import { FullscreenButton } from './FullscreenButton';
+import { CloseIcon } from './icons';
 import { MiddlePile } from './MiddlePile';
 import { PlayerPanel } from './PlayerPanel';
 import { RACK_PAD, Rack } from './Rack';
@@ -21,6 +22,10 @@ type Props = {
   table: TableModel;
   /** Shown over the table: the results when a round ends. */
   overlay?: ReactNode;
+  /** Leaving the game, after the player confirmed. Without it the table has no leave button. */
+  onLeave?: () => void;
+  /** What leaving means, said when the player is asked to confirm. */
+  leaveNote?: string;
 };
 
 /**
@@ -42,7 +47,7 @@ type Props = {
  * own press leaves the web responder stuck, which stops the next drag. They ignore presses
  * that aren't allowed instead, and still report "disabled" to screen readers.
  */
-export function GameTable({ table: p, overlay }: Props) {
+export function GameTable({ table: p, overlay, onLeave, leaveNote }: Props) {
   const { view, names } = p;
   const { round } = view;
   const YOU = view.seat;
@@ -58,6 +63,7 @@ export function GameTable({ table: p, overlay }: Props) {
   const [lifted, setLifted] = useState(false);
   const [feltSize, setFeltSize] = useState<{ width: number; height: number } | null>(null);
   const rackRef = useRef<RackHandle>(null);
+  const [leaving, setLeaving] = useState(false);
   const { drawMiddle, takeDiscard, takeIndicator } = p;
   // A tile let go over the rack lands on that slot; let go anywhere else, it goes back.
   const dropOnRack = useMemo(
@@ -313,6 +319,18 @@ export function GameTable({ table: p, overlay }: Props) {
     />
   );
 
+  const leaveButton = onLeave && (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Leave the game"
+      testID="leave-game"
+      onPress={() => setLeaving(true)}
+      style={({ pressed }) => [styles.leave, tight && styles.leaveTight, pressed && styles.leavePressed]}
+    >
+      <CloseIcon size={tight ? 12 : 14} />
+    </Pressable>
+  );
+
   return (
     <View
       style={[
@@ -336,7 +354,12 @@ export function GameTable({ table: p, overlay }: Props) {
               <View style={[styles.rackSideFill, styles.rackSideEnd]}>{controls}</View>
             </View>
           </View>
-          {/* In the empty corner of the felt, for browsers that can go full screen. */}
+          {/* In the empty corners of the felt: leaving, and full screen for browsers that can. */}
+          {leaveButton && (
+            <View style={[styles.corner, { top: pad + (tight ? 8 : 16), left: pad + (tight ? 8 : 16) }]}>
+              {leaveButton}
+            </View>
+          )}
           <View style={[styles.corner, { top: pad + (tight ? 8 : 16), right: pad + (tight ? 8 : 16) }]}>
             <FullscreenButton compact />
           </View>
@@ -344,6 +367,7 @@ export function GameTable({ table: p, overlay }: Props) {
       ) : (
         <View style={styles.narrowContent}>
           <View style={styles.panelRow}>
+            {leaveButton}
             {panel(around.left, true)}
             {panel(around.across, true)}
             {panel(around.right, true)}
@@ -359,6 +383,30 @@ export function GameTable({ table: p, overlay }: Props) {
       )}
 
       {overlay}
+
+      {leaving && onLeave && (
+        <View style={styles.confirm} testID="leave-confirm">
+          <View style={styles.confirmBox} accessibilityRole="alert">
+            <Text style={styles.confirmTitle}>Leave the game?</Text>
+            {leaveNote && <Text style={styles.confirmText}>{leaveNote}</Text>}
+            <View style={styles.confirmRow}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setLeaving(false);
+                  onLeave();
+                }}
+                style={[styles.confirmButton, styles.confirmLeave]}
+              >
+                <Text style={styles.confirmLeaveText}>Leave</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" onPress={() => setLeaving(false)} style={styles.confirmButton}>
+                <Text style={styles.confirmKeepText}>Keep playing</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -368,6 +416,54 @@ const styles = StyleSheet.create({
   wideContent: { flex: 1, gap: 12, width: '100%', maxWidth: 1280, alignSelf: 'center' },
   wideShort: { gap: 6 },
   corner: { position: 'absolute' },
+  leave: {
+    alignSelf: 'flex-start',
+    padding: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.textMuted,
+    backgroundColor: colors.backdropPanel,
+    opacity: 0.9,
+  },
+  leaveTight: { padding: 5, borderRadius: 7 },
+  leavePressed: { opacity: 0.6 },
+  confirm: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.overlay,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    zIndex: 50,
+    elevation: 50,
+  },
+  confirmBox: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: colors.tableDark,
+    borderRadius: 18,
+    padding: 18,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.felt,
+  },
+  confirmTitle: { color: colors.text, fontSize: 19, fontWeight: '900' },
+  confirmText: { color: colors.textMuted, fontSize: 14, lineHeight: 20 },
+  confirmRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
+  confirmButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 11,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: colors.textMuted,
+  },
+  confirmLeave: { backgroundColor: colors.danger, borderColor: colors.danger },
+  confirmLeaveText: { color: '#2A2A2A', fontSize: 15, fontWeight: '900' },
+  confirmKeepText: { color: colors.text, fontSize: 15, fontWeight: '700' },
   // Your rack with a panel at each end: you and the status on the left, joker and buttons on the right.
   rackRow: { flexDirection: 'row', alignItems: 'stretch', justifyContent: 'center', gap: 8 },
   rackSide: { flex: 1, minWidth: 0 },

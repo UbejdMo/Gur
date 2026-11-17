@@ -2,12 +2,13 @@ import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 
 // The web build is a single-page app: open it from the home page, the way players arrive.
-// Bots normally take up to 10 seconds a turn; the tests switch that off.
+// The tests let the bots take 1 second a turn, the shortest there is.
 async function startGame(page: Page) {
   await page.goto('/');
-  await page.getByRole('switch', { name: 'Bots take their time' }).click();
   await page.getByRole('button', { name: 'Play against bots' }).click();
-  await expect(page).toHaveURL(/bots=fast/);
+  await page.getByRole('radio', { name: '1 second' }).click();
+  await page.getByRole('button', { name: 'Start the game' }).click();
+  await expect(page).toHaveURL(/seconds=1/);
 }
 
 /** Plays your discard and waits for the bots, until it is your turn to draw. Returns false if the round ended. */
@@ -43,13 +44,39 @@ async function drag(page: Page, from: Locator, to: { x: number; y: number }) {
   await page.mouse.up();
 }
 
-test('home starts a game against bots', async ({ page }) => {
+test('home starts a game against bots, with the options asked first; the game can be left', async ({
+  page,
+}, testInfo) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Gur' })).toBeVisible();
+  // the two ways to play fit on the first screen without scrolling
+  for (const name of ['Play against bots', 'Play with friends']) {
+    await expect(page.getByRole('button', { name })).toBeInViewport({ ratio: 1 });
+  }
+  await testInfo.attach('home', { body: await page.screenshot(), contentType: 'image/png' });
   await page.getByRole('button', { name: 'Play against bots' }).click();
-  await expect(page).toHaveURL(/\/play\?aceHigh=1/);
+  await expect(page.getByRole('radio', { name: '5 seconds' })).toBeChecked();
+  await page.getByRole('switch', { name: 'Allow 12-13-1' }).click();
+  await page.getByRole('radio', { name: '3 seconds' }).click();
+  await testInfo.attach('bots-options', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.getByRole('button', { name: 'Start the game' }).click();
+  await expect(page).toHaveURL(/\/play\?aceHigh=0&seconds=3/);
   await expect(page.getByTestId('seat')).toHaveCount(3);
   await expect(page.getByTestId('rack-row')).toHaveCount(2);
+
+  // leaving asks first
+  await page.getByRole('button', { name: 'Leave the game' }).click();
+  await expect(page.getByTestId('leave-confirm')).toBeVisible();
+  await page.getByRole('button', { name: 'Keep playing' }).click();
+  await expect(page.getByTestId('leave-confirm')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Leave the game' }).click();
+  await page.getByRole('button', { name: 'Leave', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Gur' })).toBeVisible();
+
+  // the options are remembered
+  await page.getByRole('button', { name: 'Play against bots' }).click();
+  await expect(page.getByRole('radio', { name: '3 seconds' })).toBeChecked();
+  await expect(page.getByRole('switch', { name: 'Allow 12-13-1' })).not.toBeChecked();
 });
 
 test('can be added to a home screen, where it opens full screen', async ({ page, request }) => {

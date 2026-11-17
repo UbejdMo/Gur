@@ -43,6 +43,8 @@ export function OnlineTable({ lobby, connection, clockOffset, status, onLeave }:
     <View style={styles.fill}>
       <GameTable
         table={table}
+        onLeave={onLeave}
+        leaveNote="The game goes on without you: your turns are played for you. You cannot come back to this game."
         overlay={
           over && (
             <ResultsOverlay

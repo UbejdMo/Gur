@@ -279,3 +279,189 @@ describe('the game server', () => {
     expect(back.members).toHaveLength(1);
   }, 30_000);
 });
+
+describe('inviting friends', () => {
+  const ANA = {
+    userId: '00000000-0000-4000-8000-0000000000a1',
+    username: 'AnaK',
+    publicId: '11111111',
+    avatarUrl: null,
+  };
+  const BEN = {
+    userId: '00000000-0000-4000-8000-0000000000b1',
+    username: 'BenM',
+    publicId: '22222222',
+    avatarUrl: null,
+  };
+  const CEM = {
+    userId: '00000000-0000-4000-8000-0000000000c1',
+    username: 'CemB',
+    publicId: '33333333',
+    avatarUrl: null,
+  };
+  const accounts: Record<string, typeof ANA> = { 'token-ana': ANA, 'token-ben': BEN, 'token-cem': CEM };
+  /** Ana and Ben are friends; Cem is nobody's friend. */
+  const friendsOf: Record<string, string[]> = { [ANA.userId]: [BEN.userId], [BEN.userId]: [ANA.userId] };
+
+  async function setUp() {
+    let clock = 1_000_000;
+    const checks: string[] = [];
+    const url = await startServer({
+      verify: async (token) => accounts[token] ?? null,
+      areFriends: async (token, userId) => {
+        checks.push(`${accounts[token]?.username}->${userId}`);
+        return (friendsOf[accounts[token]?.userId ?? ''] ?? []).includes(userId);
+      },
+      inviteMs: 10_000,
+      now: () => clock,
+    });
+    const tick = (ms: number) => (clock += ms);
+    return { url, checks, tick };
+  }
+
+  /** A signed-in player with the game open, collecting the invites they get. */
+  async function present(url: string, token: string) {
+    const player = await connect(url);
+    const invites: unknown[] = [];
+    player.socket.on('invited', (invite) => invites.push(invite));
+    expect(await ask((reply) => player.socket.emit('hello', { token }, reply))).toEqual({ ok: true });
+    return { ...player, invites };
+  }
+
+  async function lobbyOf(player: { socket: Client }, token: string | null) {
+    const created = await ask<{ code: string; memberId: string }>((reply) =>
+      player.socket.emit('create', { name: 'Guest', token }, reply),
+    );
+    if (!created.ok) throw new Error(created.error);
+    return created.code;
+  }
+
+  const invite = (player: { socket: Client }, userId: string, token: string | null = 'token-ana') =>
+    ask<{ seconds: number }>((reply) => player.socket.emit('invite', { userId, token }, reply));
+
+  /** Lets the server's messages arrive. */
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+
+  it('the host invites a friend who has the game open; the invite reaches all their open apps', async () => {
+    const { url, checks } = await setUp();
+    const ana = await present(url, 'token-ana');
+    const benPhone = await present(url, 'token-ben');
+    const benLaptop = await present(url, 'token-ben');
+    const code = await lobbyOf(ana, 'token-ana');
+
+    expect(await invite(ana, BEN.userId)).toEqual({ ok: true, seconds: 10 });
+    await settle();
+    const expected = { code, from: { name: 'AnaK', avatarUrl: null }, seconds: 10 };
+    expect(benPhone.invites).toEqual([expected]);
+    expect(benLaptop.invites).toEqual([expected]);
+    expect(ana.invites).toEqual([]);
+    expect(checks).toEqual([`AnaK->${BEN.userId}`]);
+
+    // Ben accepts by joining with the code
+    const joined = await ask((reply) => benPhone.socket.emit('join', { code, name: '', token: 'token-ben' }, reply));
+    expect(joined).toMatchObject({ ok: true });
+    const lobby = await until(ana.seen, (s) => s.members.length === 2);
+    expect(lobby.members[1]!.name).toBe('BenM');
+    // once he is in, he cannot be invited again
+    expect(await invite(ana, BEN.userId)).toMatchObject({ error: 'Your friend is already in the lobby' });
+  });
+
+  it('an invite lasts ten seconds; until then it cannot be sent again', async () => {
+    const { url, tick } = await setUp();
+    const ana = await present(url, 'token-ana');
+    const ben = await present(url, 'token-ben');
+    await lobbyOf(ana, 'token-ana');
+
+    expect(await invite(ana, BEN.userId)).toMatchObject({ ok: true });
+    tick(9_999);
+    expect(await invite(ana, BEN.userId)).toMatchObject({ ok: false, error: expect.stringMatching(/Wait until/) });
+    tick(1);
+    expect(await invite(ana, BEN.userId)).toMatchObject({ ok: true });
+    await settle();
+    expect(ben.invites).toHaveLength(2);
+  });
+
+  it('only friends can be invited, only by the host with a valid sign-in, and only before the game', async () => {
+    const { url } = await setUp();
+    const ana = await present(url, 'token-ana');
+    const ben = await present(url, 'token-ben');
+    const cem = await present(url, 'token-cem');
+    const code = await lobbyOf(ana, 'token-ana');
+
+    // Cem is not Ana's friend
+    expect(await invite(ana, CEM.userId)).toMatchObject({ error: 'You can only invite your friends' });
+    // a made-up account id, and nonsense
+    expect(await invite(ana, 'not-an-id')).toMatchObject({ error: 'That player does not exist' });
+    expect(await ask((reply) => ana.socket.emit('invite', null as never, reply))).toMatchObject({ ok: false });
+    // somebody else's token, or none
+    expect(await invite(ana, BEN.userId, 'token-cem')).toMatchObject({ error: expect.stringMatching(/sign-in/) });
+    expect(await invite(ana, BEN.userId, null)).toMatchObject({ error: expect.stringMatching(/sign-in/) });
+    // yourself
+    expect(await invite(ana, ANA.userId)).toMatchObject({ error: 'You are already in the lobby' });
+
+    // a player who is not the host
+    await ask((reply) => cem.socket.emit('join', { code, name: '', token: 'token-cem' }, reply));
+    expect(await invite(cem, BEN.userId, 'token-cem')).toMatchObject({
+      error: expect.stringMatching(/Only the player/),
+    });
+
+    // after the start
+    await ask((reply) => ana.socket.emit('start', reply));
+    expect(await invite(ana, BEN.userId)).toMatchObject({ error: 'The game has already started' });
+    await settle();
+    expect(ben.invites).toEqual([]);
+    expect(cem.invites).toEqual([]);
+  });
+
+  it('a guest host cannot invite, and nobody can from outside a lobby', async () => {
+    const { url } = await setUp();
+    const guest = await connect(url);
+    expect(await invite(guest, BEN.userId)).toMatchObject({ error: 'You are not in a lobby' });
+    await lobbyOf(guest, null);
+    expect(await invite(guest, BEN.userId)).toMatchObject({ error: 'Sign in to invite your friends' });
+  });
+
+  it('says so when the friend does not have the game open, or signed out, or the lobby is full', async () => {
+    const { url } = await setUp();
+    const ana = await present(url, 'token-ana');
+    const code = await lobbyOf(ana, 'token-ana');
+    expect(await invite(ana, BEN.userId)).toMatchObject({ error: 'Your friend does not have the game open right now' });
+
+    // he opens the game, then signs out on it
+    const ben = await present(url, 'token-ben');
+    expect(await ask((reply) => ben.socket.emit('hello', { token: null }, reply))).toEqual({ ok: true });
+    expect(await invite(ana, BEN.userId)).toMatchObject({
+      error: expect.stringMatching(/does not have the game open/),
+    });
+    // and closes it after signing in again
+    await ask((reply) => ben.socket.emit('hello', { token: 'token-ben' }, reply));
+    ben.socket.disconnect();
+    await settle();
+    expect(await invite(ana, BEN.userId)).toMatchObject({
+      error: expect.stringMatching(/does not have the game open/),
+    });
+
+    // a full lobby
+    for (const name of ['Cem', 'Dea', 'Eli']) {
+      const guest = await connect(url);
+      await ask((reply) => guest.socket.emit('join', { code, name }, reply));
+    }
+    await present(url, 'token-ben');
+    expect(await invite(ana, BEN.userId)).toMatchObject({ error: 'The lobby is full' });
+
+    // a bad sign-in in hello is refused
+    const stranger = await connect(url);
+    expect(await ask((reply) => stranger.socket.emit('hello', { token: 'made-up' }, reply))).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/sign-in has expired/),
+    });
+  });
+
+  it('without a friends check nobody can be invited', async () => {
+    const url = await startServer({ verify: async (token) => accounts[token] ?? null });
+    const ana = await present(url, 'token-ana');
+    await present(url, 'token-ben');
+    await lobbyOf(ana, 'token-ana');
+    expect(await invite(ana, BEN.userId)).toMatchObject({ error: 'You can only invite your friends' });
+  });
+});

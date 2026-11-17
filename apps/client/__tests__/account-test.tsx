@@ -1,14 +1,17 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import type * as ReactModule from 'react';
 import { Account, usernameProblem } from '@/account/account';
 import type { AuthBackend, Profile, RenameResult } from '@/account/account';
+import type { Person } from '@/account/friends';
 import Friends from '@/app/friends';
-import { AccountCard } from '@/components/AccountCard';
+import { InviteFriends } from '@/components/InviteFriends';
+import { Invites } from '@/components/Invites';
+import { TopBar } from '@/components/TopBar';
 import { LobbyRoom } from '@/components/LobbyRoom';
 import { PlayerPanel } from '@/components/PlayerPanel';
 
 // The app's one account is swapped for one over a stand-in service, different in each test.
-const mockHolder: { account: Account | null; requests: number } = { account: null, requests: 0 };
+const mockHolder: { account: Account | null; people: Person[] } = { account: null, people: [] };
 jest.mock('@/account', () => ({
   get account() {
     return mockHolder.account;
@@ -18,10 +21,8 @@ jest.mock('@/account', () => ({
     const current = mockHolder.account!;
     return useSyncExternalStore(current.subscribe, current.get, current.get);
   },
-  useFriends: () => ({
-    status: 'ready',
-    people: Array.from({ length: mockHolder.requests }, (_, i) => ({ id: `r${i}`, state: 'incoming' })),
-  }),
+  useFriends: () => ({ status: 'ready', people: mockHolder.people }),
+  friends: { refresh: jest.fn(async () => undefined) },
 }));
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn() },
@@ -33,8 +34,19 @@ jest.mock('@/online/connection', () => ({
     hasSavedSession: jest.fn(() => false),
     create: jest.fn(),
     join: jest.fn(),
+    setPresent: jest.fn(),
+    onInvite: jest.fn(() => () => undefined),
+    get: jest.fn(() => ({ lobby: null })),
   },
 }));
+
+const friend = (username: string, state: Person['state']): Person => ({
+  id: `id-${username}`,
+  publicId: String(10000000 + username.charCodeAt(0)),
+  username,
+  avatarUrl: null,
+  state,
+});
 
 const ANA: Profile = {
   id: 'user-1',
@@ -108,7 +120,7 @@ async function started(start: Parameters<typeof fakeBackend>[0] = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   mockHolder.account = new Account(null);
-  mockHolder.requests = 0;
+  mockHolder.people = [];
 });
 
 describe('names', () => {
@@ -225,16 +237,19 @@ describe('the account', () => {
   });
 });
 
-describe('the account card on the home screen', () => {
-  it('shows nothing in a build without accounts', async () => {
-    await render(<AccountCard />);
-    expect(screen.queryByTestId('account')).toBeNull();
+describe('the top bar of the first screen', () => {
+  it('shows nothing on the right in a build without accounts', async () => {
+    await render(<TopBar />);
+    expect(screen.queryByRole('button', { name: 'Sign in with Google' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Your profile' })).toBeNull();
   });
 
-  it('offers to sign in with Google, and says when that did not work', async () => {
+  it('signed out, offers to sign in with Google, and says when that did not work', async () => {
     const fake = await started();
     mockHolder.account = fake.account;
-    await render(<AccountCard />);
+    await render(<TopBar />);
+    expect(screen.queryByRole('button', { name: 'Friends' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Messages' })).toBeNull();
     await fireEvent.press(screen.getByRole('button', { name: 'Sign in with Google' }));
     expect(fake.calls).toHaveLength(1);
     expect(fake.calls[0]).toMatch(/^google:/);
@@ -242,25 +257,52 @@ describe('the account card on the home screen', () => {
 
     const down = await started({ down: true });
     mockHolder.account = down.account;
-    await render(<AccountCard />);
+    await render(<TopBar />);
     await fireEvent.press(screen.getAllByRole('button', { name: 'Sign in with Google' }).at(-1)!);
     expect(screen.getByTestId('account-error')).toHaveTextContent(/did not work/);
   });
 
-  it('shows who you are once signed in: name and id; you can change the name and sign out', async () => {
-    const fake = await started({ signedIn: true, taken: ['ben'] });
-    mockHolder.account = fake.account;
-    await render(<AccountCard />);
+  it('signed in, shows messages, friends and your picture, at the top right', async () => {
+    mockHolder.account = (await started({ signedIn: true })).account;
+    await render(<TopBar />);
+    expect(screen.getByRole('button', { name: 'Messages' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Friends' })).toBeOnTheScreen();
+    expect(screen.getByTestId('profile-picture')).toHaveProp('source', { uri: ANA.avatarUrl });
+    expect(screen.queryByRole('button', { name: 'Sign in with Google' })).toBeNull();
+  });
+
+  it('the profile shows your name and ID, which can be copied', async () => {
+    const writeText = jest.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    mockHolder.account = (await started({ signedIn: true })).account;
+    await render(<TopBar />);
+    expect(screen.queryByTestId('account-name')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Your profile' }));
     expect(screen.getByTestId('account-name')).toHaveTextContent('AnaKrasniqi');
     expect(screen.getByTestId('account-id')).toHaveTextContent('ID 48213377');
+    await fireEvent.press(screen.getByRole('button', { name: 'Copy your ID' }));
+    expect(writeText).toHaveBeenCalledWith('48213377');
+    expect(screen.getByText('Copied')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole('button', { name: 'Close profile' }));
+    expect(screen.queryByTestId('account-name')).toBeNull();
 
+    // where the browser refuses, the player is told how to copy it themselves
+    writeText.mockRejectedValueOnce(new Error('not allowed'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Your profile' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Copy your ID' }));
+    expect(screen.getByText(/Select the number/)).toBeOnTheScreen();
+  });
+
+  it('in the profile you change your name, and sign out', async () => {
+    const fake = await started({ signedIn: true, taken: ['ben'] });
+    mockHolder.account = fake.account;
+    await render(<TopBar />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Your profile' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Change name' }));
     expect(screen.getByLabelText('New name')).toHaveProp('value', 'AnaKrasniqi');
     await fireEvent.changeText(screen.getByLabelText('New name'), 'Ben');
     await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
     expect(screen.getByTestId('account-error')).toHaveTextContent('Somebody already has that name');
-    expect(screen.getByTestId('account-name')).toHaveTextContent('AnaKrasniqi');
-
     await fireEvent.changeText(screen.getByLabelText('New name'), 'Ana_K');
     await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
     expect(screen.getByTestId('account-name')).toHaveTextContent('Ana_K');
@@ -274,28 +316,15 @@ describe('the account card on the home screen', () => {
     expect(screen.getByTestId('account-name')).toHaveTextContent('Ana_K');
 
     await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
-    expect(screen.getByRole('button', { name: 'Sign in with Google' })).toBeTruthy();
-  });
-
-  it('opens your friends, and counts the requests waiting for an answer', async () => {
-    const { router } = jest.requireMock('expo-router') as { router: { push: jest.Mock } };
-    mockHolder.account = (await started({ signedIn: true })).account;
-    const first = await render(<AccountCard />);
-    expect(screen.queryByTestId('requests-badge')).toBeNull();
-    await fireEvent.press(screen.getByRole('button', { name: 'Friends' }));
-    expect(router.push).toHaveBeenCalledWith('/people');
-    await first.unmount();
-
-    mockHolder.requests = 2;
-    await render(<AccountCard />);
-    expect(screen.getByTestId('requests-badge')).toHaveTextContent('2');
-    expect(screen.getByRole('button', { name: 'Friends, 2 requests' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Sign in with Google' })).toBeOnTheScreen();
+    expect(screen.queryByTestId('account-name')).toBeNull();
   });
 
   it('deletes your account only after asking, and then says it is gone', async () => {
     const fake = await started({ signedIn: true });
     mockHolder.account = fake.account;
-    await render(<AccountCard />);
+    await render(<TopBar />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Your profile' }));
 
     // changing your mind deletes nothing
     await fireEvent.press(screen.getByRole('button', { name: 'Delete account' }));
@@ -308,14 +337,15 @@ describe('the account card on the home screen', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Delete for good' }));
     expect(fake.calls).toEqual(['delete']);
     expect(screen.getByTestId('account-deleted')).toHaveTextContent(/Your account is deleted/);
-    expect(screen.getByRole('button', { name: 'Sign in with Google' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Sign in with Google' })).toBeOnTheScreen();
     expect(screen.queryByTestId('account-name')).toBeNull();
   });
 
   it('says so when the account could not be deleted, and keeps it', async () => {
     const fake = await started({ signedIn: true, keeps: true });
     mockHolder.account = fake.account;
-    await render(<AccountCard />);
+    await render(<TopBar />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Your profile' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Delete account' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Delete for good' }));
     expect(screen.getByTestId('account-error')).toHaveTextContent(/could not be deleted/);
@@ -323,11 +353,196 @@ describe('the account card on the home screen', () => {
     expect(screen.queryByTestId('account-deleted')).toBeNull();
   });
 
-  it('shows an initial when the account has no picture', async () => {
-    const fake = await started({ signedIn: true, profile: { ...ANA, avatarUrl: null } });
-    mockHolder.account = fake.account;
-    await render(<AccountCard />);
-    expect(screen.getByText('A')).toBeTruthy();
+  it('shows a letter when the account has no picture, or the picture does not load', async () => {
+    mockHolder.account = (await started({ signedIn: true, profile: { ...ANA, avatarUrl: null } })).account;
+    const first = await render(<TopBar />);
+    expect(screen.getByText('A')).toBeOnTheScreen();
+    await first.unmount();
+
+    mockHolder.account = (await started({ signedIn: true })).account;
+    await render(<TopBar />);
+    await fireEvent(screen.getByTestId('profile-picture'), 'error');
+    expect(screen.queryByTestId('profile-picture')).toBeNull();
+    expect(screen.getByText('A')).toBeOnTheScreen();
+  });
+
+  it('opens your friends, with the number of requests waiting for an answer on the button', async () => {
+    mockHolder.account = (await started({ signedIn: true })).account;
+    mockHolder.people = [friend('Cem', 'incoming'), friend('Dea', 'incoming'), friend('Ben', 'friend')];
+    await render(<TopBar />);
+    expect(screen.getByTestId('requests-badge')).toHaveTextContent('2');
+    await fireEvent.press(screen.getByRole('button', { name: 'Friends, 2 requests' }));
+    expect(screen.getByTestId('friends-panel')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Username or ID')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Accept Cem' })).toBeOnTheScreen();
+  });
+
+  it('messages are not there yet, and the panel says so', async () => {
+    mockHolder.account = (await started({ signedIn: true })).account;
+    await render(<TopBar />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Messages' }));
+    expect(screen.getByTestId('messages-soon')).toHaveTextContent(/coming soon/);
+  });
+});
+
+describe('inviting friends from the lobby', () => {
+  const members = (...names: string[]) =>
+    names.map((name, i) => ({
+      name,
+      bot: false,
+      connected: true,
+      host: i === 0,
+      avatarUrl: null,
+      publicId: name === 'Ana' ? '48213377' : name === 'Ben' ? friend('Ben', 'friend').publicId : null,
+    }));
+  const room = (...names: string[]) => ({
+    code: 'WRCCS',
+    you: 0,
+    members: members(...names),
+    settings: { aceHigh: true, rounds: 1 as const, fillWithBots: false },
+    game: null,
+    turnEndsAt: null,
+    nextRoundAt: null,
+    now: Date.now(),
+  });
+
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('lists your friends who are not here yet; an invite runs ten seconds, then it can be sent again', async () => {
+    mockHolder.account = (await started({ signedIn: true })).account;
+    jest.useFakeTimers();
+    mockHolder.people = [friend('Ben', 'friend'), friend('Cem', 'friend'), friend('Dea', 'outgoing')];
+    const onInvite = jest.fn(async (_id: string) => ({ ok: true as const, seconds: 10 }));
+    await render(<InviteFriends lobby={room('Ana', 'Ben')} onInvite={onInvite} />);
+    // Ben is in the lobby already, and Dea has not accepted yet
+    expect(screen.queryByTestId('invite-Ben')).toBeNull();
+    expect(screen.queryByTestId('invite-Dea')).toBeNull();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Invite Cem' }));
+    expect(onInvite).toHaveBeenCalledWith('id-Cem');
+    expect(screen.getByText('Invited · 10s')).toBeOnTheScreen();
+    // pressing again while it runs sends nothing
+    await fireEvent.press(screen.getByRole('button', { name: /^Invited Cem/ }));
+    expect(onInvite).toHaveBeenCalledTimes(1);
+
+    await act(async () => jest.advanceTimersByTime(4_000));
+    expect(screen.getByText('Invited · 6s')).toBeOnTheScreen();
+    await act(async () => jest.advanceTimersByTime(6_000));
+    expect(screen.getByRole('button', { name: 'Invite Cem' })).toHaveTextContent('Invite again');
+    await fireEvent.press(screen.getByRole('button', { name: 'Invite Cem' }));
+    expect(onInvite).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows the server's reason when an invite is refused", async () => {
+    mockHolder.account = (await started({ signedIn: true })).account;
+    jest.useFakeTimers();
+    mockHolder.people = [friend('Cem', 'friend')];
+    const onInvite = jest.fn(async () => ({
+      ok: false as const,
+      error: 'Your friend does not have the game open right now',
+    }));
+    await render(<InviteFriends lobby={room('Ana')} onInvite={onInvite} />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Invite Cem' }));
+    expect(screen.getByTestId('invite-error')).toHaveTextContent(/does not have the game open/);
+    expect(screen.getByRole('button', { name: 'Invite Cem' })).toHaveTextContent('Invite');
+  });
+
+  it('says what to do without friends, without signing in, and when the lobby is full', async () => {
+    const onInvite = jest.fn();
+    const guest = await render(<InviteFriends lobby={room('Ana')} onInvite={onInvite} />);
+    expect(screen.getByTestId('invite-friends')).toHaveTextContent(/Sign in on the first screen/);
+    await guest.unmount();
+
+    mockHolder.account = (await started({ signedIn: true })).account;
+    jest.useFakeTimers();
+    const alone = await render(<InviteFriends lobby={room('Ana')} onInvite={onInvite} />);
+    expect(screen.getByTestId('invite-friends')).toHaveTextContent(/Add friends with the friends button/);
+    await alone.unmount();
+
+    mockHolder.people = [friend('Ben', 'friend')];
+    const all = await render(<InviteFriends lobby={room('Ana', 'Ben')} onInvite={onInvite} />);
+    expect(screen.getByTestId('invite-friends')).toHaveTextContent(/All your friends are here/);
+    await all.unmount();
+
+    mockHolder.people = [friend('Cem', 'friend')];
+    await render(<InviteFriends lobby={room('Ana', 'Ben', 'Eli', 'Fat')} onInvite={onInvite} />);
+    expect(screen.getByTestId('invite-friends')).toHaveTextContent(/The lobby is full/);
+  });
+});
+
+describe('an invitation', () => {
+  type Listener = (invite: { code: string; from: { name: string; avatarUrl: string | null }; seconds: number }) => void;
+  const connection = () =>
+    (
+      jest.requireMock('@/online/connection') as {
+        online: { join: jest.Mock; setPresent: jest.Mock; onInvite: jest.Mock; get: jest.Mock };
+      }
+    ).online;
+  const arrive = async (code = 'WRCCS') => {
+    const listener = connection().onInvite.mock.calls.at(-1)![0] as Listener;
+    await act(async () => listener({ code, from: { name: 'BenM', avatarUrl: null }, seconds: 10 }));
+  };
+
+  afterEach(() => jest.useRealTimers());
+
+  it('tells the server you can be reached only while you are signed in', async () => {
+    mockHolder.account = (await started()).account;
+    jest.useFakeTimers();
+    const first = await render(<Invites />);
+    expect(connection().setPresent).toHaveBeenLastCalledWith(false);
+    await first.unmount();
+    mockHolder.account = (await started({ signedIn: true })).account;
+    jest.useFakeTimers();
+    await render(<Invites />);
+    expect(connection().setPresent).toHaveBeenLastCalledWith(true);
+  });
+
+  it('pops up with who invites you and the seconds left, and is gone when they run out', async () => {
+    mockHolder.account = (await started({ signedIn: true })).account;
+    jest.useFakeTimers();
+    await render(<Invites />);
+    expect(screen.queryByTestId('invite')).toBeNull();
+    await arrive();
+    expect(screen.getByTestId('invite')).toHaveTextContent(/BenM invites you to play/);
+    expect(screen.getByTestId('invite-seconds')).toHaveTextContent('Lobby WRCCS · 10 s');
+    await act(async () => jest.advanceTimersByTime(3_000));
+    expect(screen.getByTestId('invite-seconds')).toHaveTextContent('Lobby WRCCS · 7 s');
+    await act(async () => jest.advanceTimersByTime(7_100));
+    expect(screen.queryByTestId('invite')).toBeNull();
+  });
+
+  it('Join takes you into the lobby; Not now just closes it', async () => {
+    const { router } = jest.requireMock('expo-router') as { router: { push: jest.Mock } };
+    mockHolder.account = (await started({ signedIn: true })).account;
+    jest.useFakeTimers();
+    connection().join.mockResolvedValue({ ok: true, code: 'WRCCS' });
+    await render(<Invites />);
+    await arrive();
+    await fireEvent.press(screen.getByRole('button', { name: 'Not now' }));
+    expect(screen.queryByTestId('invite')).toBeNull();
+    expect(connection().join).not.toHaveBeenCalled();
+
+    await arrive();
+    await fireEvent.press(screen.getByRole('button', { name: 'Join BenM' }));
+    expect(connection().join).toHaveBeenCalledWith('WRCCS', 'AnaKrasniqi');
+    expect(router.push).toHaveBeenCalledWith('/lobby');
+    expect(screen.queryByTestId('invite')).toBeNull();
+  });
+
+  it('says why joining did not work, and is not shown for the lobby you are already in', async () => {
+    mockHolder.account = (await started({ signedIn: true })).account;
+    jest.useFakeTimers();
+    connection().join.mockResolvedValue({ ok: false, error: 'This lobby is full' });
+    await render(<Invites />);
+    await arrive();
+    await fireEvent.press(screen.getByRole('button', { name: 'Join BenM' }));
+    expect(screen.getByTestId('invite-seconds')).toHaveTextContent('This lobby is full');
+    await fireEvent.press(screen.getByRole('button', { name: 'Not now' }));
+
+    connection().get.mockReturnValue({ lobby: { code: 'HERE1' } });
+    await arrive('HERE1');
+    expect(screen.queryByTestId('invite')).toBeNull();
   });
 });
 
@@ -378,6 +593,7 @@ describe('pictures', () => {
         onSettings={jest.fn()}
         onStart={jest.fn()}
         onLeave={jest.fn()}
+        onInvite={jest.fn()}
       />,
     );
     expect(screen.getByTestId('picture-0')).toHaveProp('source', { uri: 'https://example.com/a.png' });

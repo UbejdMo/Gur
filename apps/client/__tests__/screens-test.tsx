@@ -3,19 +3,57 @@ import Home from '@/app/index';
 import { Table } from '@/components/Table';
 import { Linking, StyleSheet } from 'react-native';
 import { DiscardRow } from '@/components/DiscardRow';
+import { botSeconds, loadBotSettings, playAddress, saveBotSettings } from '@/game/botSettings';
 import { colors, tileInk } from '@/theme';
 import { ALMOST, NEEDS_K13, READY, practiceGame, t, ts } from '../test-utils/deal';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), replace: jest.fn() } }));
 
+beforeEach(() => {
+  jest.clearAllMocks();
+  localStorage.clear();
+});
+
 describe('Home', () => {
-  it('offers the 12-13-1 option and starts a game against bots', async () => {
-    const { router } = jest.requireMock('expo-router') as { router: { push: jest.Mock } };
+  it('shows the name of the game and the two ways to play, as tiles', async () => {
     await render(<Home />);
     expect(screen.getByRole('header', { name: 'Gur' })).toBeOnTheScreen();
-    await fireEvent(screen.getByLabelText('Allow 12-13-1'), 'valueChange', false);
+    expect(screen.getByRole('button', { name: 'Play against bots' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Play with friends' })).toBeOnTheScreen();
+    expect(screen.getAllByTestId('card-tile')).toHaveLength(6);
+    // the options for a bots game are not on the first screen any more
+    expect(screen.queryByLabelText('Allow 12-13-1')).toBeNull();
+  });
+
+  it('asks for the options before a game against bots: 12-13-1 and how long each bot takes', async () => {
+    const { router } = jest.requireMock('expo-router') as { router: { push: jest.Mock } };
+    await render(<Home />);
     await fireEvent.press(screen.getByRole('button', { name: 'Play against bots' }));
-    expect(router.push).toHaveBeenCalledWith('/play?aceHigh=0');
+    expect(screen.getByTestId('bots-setup')).toBeOnTheScreen();
+    expect(screen.getByRole('radio', { name: '5 seconds' })).toBeChecked();
+    expect(screen.getAllByRole('radio')).toHaveLength(10);
+    await fireEvent(screen.getByLabelText('Allow 12-13-1'), 'valueChange', false);
+    await fireEvent.press(screen.getByRole('radio', { name: '2 seconds' }));
+    expect(screen.getByText(/Each bot takes/)).toHaveTextContent(/Each bot takes 2 seconds over its turn/);
+    await fireEvent.press(screen.getByRole('button', { name: 'Start the game' }));
+    expect(router.push).toHaveBeenCalledWith('/play?aceHigh=0&seconds=2');
+  });
+
+  it('remembers the options for the next game against bots', async () => {
+    const { router } = jest.requireMock('expo-router') as { router: { push: jest.Mock } };
+    const first = await render(<Home />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Play against bots' }));
+    await fireEvent.press(screen.getByRole('radio', { name: '1 second' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Start the game' }));
+    await first.unmount();
+
+    await render(<Home />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Play against bots' }));
+    expect(screen.getByRole('radio', { name: '1 second' })).toBeChecked();
+    expect(screen.getByText(/Each bot takes/)).toHaveTextContent(/Each bot takes 1 second over its turn/);
+    // closing the options starts nothing
+    await fireEvent.press(screen.getByRole('button', { name: 'Close play against bots' }));
+    expect(router.push).toHaveBeenCalledTimes(1);
   });
 
   it('says what the game is and links to the privacy policy and the terms', async () => {
@@ -28,19 +66,43 @@ describe('Home', () => {
     expect(open).toHaveBeenLastCalledWith('https://ubejdmo.github.io/Gur/terms.html');
     open.mockRestore();
   });
+});
 
-  it('lets you make the bots play fast', async () => {
-    const { router } = jest.requireMock('expo-router') as { router: { push: jest.Mock } };
-    await render(<Home />);
-    await fireEvent(screen.getByLabelText('Bots take their time'), 'valueChange', false);
-    await fireEvent.press(screen.getByRole('button', { name: 'Play against bots' }));
-    expect(router.push).toHaveBeenLastCalledWith('/play?aceHigh=1&bots=fast');
+describe('the options for a game against bots', () => {
+  it('keep the seconds between 1 and 10, and survive storage that is blocked or holds nonsense', () => {
+    expect(botSeconds(0)).toBe(1);
+    expect(botSeconds('7')).toBe(7);
+    expect(botSeconds(42)).toBe(10);
+    expect(botSeconds('soon')).toBe(5);
+    localStorage.setItem('gur.bots', '{not json');
+    expect(loadBotSettings()).toEqual({ aceHigh: true, seconds: 5 });
+    localStorage.setItem('gur.bots', JSON.stringify({ aceHigh: 'yes', seconds: 99 }));
+    expect(loadBotSettings()).toEqual({ aceHigh: true, seconds: 10 });
+    const blocked = jest.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    expect(() => saveBotSettings({ aceHigh: false, seconds: 3 })).not.toThrow();
+    blocked.mockRestore();
+    expect(playAddress({ aceHigh: false, seconds: 3 })).toBe('/play?aceHigh=0&seconds=3');
   });
 });
 
 describe('Table', () => {
   const renderTable = (game = practiceGame()) =>
     render(<Table aceHigh timer={false} botDelayMs={100} newGame={() => game} onMenu={jest.fn()} />);
+
+  it('can be left, after saying what leaving means', async () => {
+    const onMenu = jest.fn();
+    await render(<Table aceHigh timer={false} botDelayMs={100} newGame={() => practiceGame()} onMenu={onMenu} />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Leave the game' }));
+    expect(screen.getByTestId('leave-confirm')).toHaveTextContent(/ends here/);
+    await fireEvent.press(screen.getByRole('button', { name: 'Keep playing' }));
+    expect(screen.queryByTestId('leave-confirm')).toBeNull();
+    expect(onMenu).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Leave the game' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Leave' }));
+    expect(onMenu).toHaveBeenCalledTimes(1);
+  });
 
   it('shows three opponents, the middle and your 15 tiles', async () => {
     await renderTable();

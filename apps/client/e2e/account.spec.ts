@@ -36,8 +36,10 @@ test('a player signs in, renames themselves, and plays under that name with thei
   const options = testInfo.project.use;
   const ana = await player(browser, options);
 
-  // to "Google" and back: the card shows who she is, and the address is clean again
+  // to "Google" and back: her picture is at the top right, her profile says who she is,
+  // and the address is clean again
   await ana.getByRole('button', { name: 'Sign in with Google' }).click();
+  await ana.getByRole('button', { name: 'Your profile' }).click();
   await expect(ana.getByTestId('account-name')).toHaveText(/^Ana\d{4}$/);
   await expect(ana.getByTestId('account-id')).toHaveText(/^ID \d{8}$/);
   await expect.poll(() => new URL(ana.url()).search).toBe('');
@@ -52,10 +54,13 @@ test('a player signs in, renames themselves, and plays under that name with thei
   await ana.getByRole('button', { name: 'Save' }).click();
   await expect(ana.getByTestId('account-name')).toHaveText(name);
 
+  await testInfo.attach('profile', { body: await ana.screenshot(), contentType: 'image/png' });
+
   // still signed in after closing and opening the page
   await ana.reload();
+  await ana.getByRole('button', { name: 'Your profile' }).click();
   await expect(ana.getByTestId('account-name')).toHaveText(name);
-  await testInfo.attach('account-card', { body: await ana.screenshot(), contentType: 'image/png' });
+  await ana.getByRole('button', { name: 'Close profile' }).click();
 
   // with friends she plays under that name: there is nothing to type
   await ana.getByRole('button', { name: 'Play with friends' }).click();
@@ -68,6 +73,7 @@ test('a player signs in, renames themselves, and plays under that name with thei
   const ben = await player(browser, options);
   await ben.getByRole('button', { name: 'Play with friends' }).click();
   await ben.getByLabel('Your name').fill('Ben');
+  await ben.getByRole('button', { name: 'Join a lobby' }).click();
   await ben.getByLabel('Lobby code').fill(code);
   await ben.getByRole('button', { name: 'Join', exact: true }).click();
   await expect(ben.getByTestId('members')).toContainText(name);
@@ -88,6 +94,7 @@ test('a player signs in, renames themselves, and plays under that name with thei
 test('signing out makes you a guest again', async ({ browser }, testInfo) => {
   const page = await player(browser, testInfo.project.use);
   await page.getByRole('button', { name: 'Sign in with Google' }).click();
+  await page.getByRole('button', { name: 'Your profile' }).click();
   await expect(page.getByTestId('account-name')).toBeVisible();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page.getByRole('button', { name: 'Sign in with Google' })).toBeVisible();
@@ -103,6 +110,7 @@ test('a player deletes their account: it is gone for good, and they play on as a
 }, testInfo) => {
   const page = await player(browser, testInfo.project.use);
   await page.getByRole('button', { name: 'Sign in with Google' }).click();
+  await page.getByRole('button', { name: 'Your profile' }).click();
   await expect(page.getByTestId('account-name')).toBeVisible();
 
   // asked first; changing your mind keeps the account
@@ -132,5 +140,6 @@ test('an app without accounts shows nothing about signing in', async ({ page }) 
   });
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Play with friends' })).toBeVisible();
-  await expect(page.getByTestId('account')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Sign in with Google' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Your profile' })).toHaveCount(0);
 });

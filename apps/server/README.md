@@ -10,6 +10,7 @@ Lets friends play together: one creates a lobby, shares its code, the others joi
 - **The clock.** 15 seconds a turn. When time runs out the server plays the timeout move. Bots take 1.5 to 4 seconds. After a round the next one starts by itself after 12 seconds, or at once when the host says so.
 - **Dropped connections.** A player who loses the connection keeps their seat and gets back in with the key they were given when they joined. A player who leaves a game for good is played for by the server.
 - **Accounts.** A player who signed in sends their token when they open or join a lobby. The server asks Supabase whose it is and takes the name and picture from that player's profile, never from what the app says. One account holds one seat in a lobby. Players without a token are guests under the name they typed.
+- **Invites.** A signed-in player with the app open says `hello` with their token, and the server keeps a room per account for their open connections (not saved anywhere). The lobby leader can `invite` a friend before the game: the server checks the leader's token, asks Supabase whether the two are friends (`supabaseFriendsCheck`), and sends `invited` to every open app of the friend. An invite lasts 10 seconds; until then it cannot be sent again.
 - **Clean-up.** A lobby is removed when everyone has left it, or when nobody has been connected to it for ten minutes. Games are kept in memory only: a restart of the server ends them.
 
 ## Layout
