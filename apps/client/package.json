@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@gur/server": "workspace:*",
-    "@playwright/test": "1.65.0",
+    "@playwright/test": "1.65.1",
     "@testing-library/react-native": "^14.1.0",
     "@types/jest": "^30.0.0",
     "@types/react": "~19.3.0",
