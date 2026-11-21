@@ -94,6 +94,11 @@ export interface ClientToServerEvents {
    * invite lasts `seconds`; until then it cannot be sent again.
    */
   invite: (request: { userId: string; token?: string | null }, reply: Reply<{ seconds: number }>) => void;
+  /**
+   * Says you just sent a friend (their account id) a message, so their open apps fetch it at
+   * once. The message itself goes to the database, not through here. `token` is yours.
+   */
+  poke: (request: { to: string; token?: string | null }, reply: Reply) => void;
 }
 
 /** An invitation into a friend's lobby. */
@@ -105,7 +110,13 @@ export interface Invite {
   seconds: number;
 }
 
+/** Something new in your conversation with a player (their account id): fetch it. */
+export interface News {
+  with: string;
+}
+
 export interface ServerToClientEvents {
   state: (state: LobbyState) => void;
   invited: (invite: Invite) => void;
+  news: (news: News) => void;
 }

@@ -302,3 +302,217 @@ describe('friends', () => {
     expect(await list(FLO)).toEqual([]);
   });
 });
+
+describe('messages, blocking and reporting', () => {
+  const HAL = '00000000-0000-0000-0000-0000000000a2';
+  const IVA = '00000000-0000-0000-0000-0000000000b2';
+  const JON = '00000000-0000-0000-0000-0000000000c2';
+  type Sent = { status: string; id: string | null; body: string | null };
+  type Line = { id: string; from_me: boolean; body: string; read_at: string | null };
+  type Chat = { username: string; last_body: string; last_from_me: boolean; unread: number };
+
+  const send = async (me: string, to: string, message: string) =>
+    (await as(me, 'select * from public.send_message($1, $2)', [to, message])).rows[0] as Sent;
+  const thread = async (me: string, other: string, before: string | null = null, max = 50) =>
+    (await as(me, 'select * from public.conversation($1, $2, $3)', [other, before, max])).rows as Line[];
+  const chats = async (me: string) =>
+    ((await as(me, 'select * from public.my_conversations()')).rows as Chat[]).map(
+      (c) => `${c.username}:${c.last_body}:${c.last_from_me ? 'me' : 'them'}:${c.unread}`,
+    );
+  const befriend = async (a: string, b: string) => {
+    await as(a, 'select * from public.add_friend($1)', [(await profile(b)).public_id]);
+    await as(b, 'select public.accept_friend($1)', [a]);
+  };
+  const report = async (me: string, who: string, why: string, note: string | null = null) =>
+    (await as(me, 'select public.report_player($1, $2, $3) as status', [who, why, note])).rows[0] as { status: string };
+
+  beforeAll(async () => {
+    await signUp(HAL, { name: 'Hal' });
+    await signUp(IVA, { name: 'Iva' });
+    await signUp(JON, { name: 'Jon' });
+    await befriend(HAL, IVA);
+  });
+
+  it('friends write to each other; each sees the conversation from their side, newest first', async () => {
+    expect(await send(HAL, IVA, '  Hi Iva!  ')).toMatchObject({ status: 'sent', body: 'Hi Iva!' });
+    expect(await send(IVA, HAL, 'Hey Hal')).toMatchObject({ status: 'sent' });
+    expect((await thread(HAL, IVA)).map((l) => `${l.from_me ? 'me' : 'them'}:${l.body}`)).toEqual([
+      'them:Hey Hal',
+      'me:Hi Iva!',
+    ]);
+    expect((await thread(IVA, HAL)).map((l) => l.from_me)).toEqual([true, false]);
+  });
+
+  it('lists conversations with the last message and the unread count; reading clears it', async () => {
+    expect(await chats(HAL)).toEqual(['Iva:Hey Hal:them:1']);
+    expect(await chats(IVA)).toEqual(['Hal:Hey Hal:me:1']);
+    await as(HAL, 'select public.mark_read($1)', [IVA]);
+    expect(await chats(HAL)).toEqual(['Iva:Hey Hal:them:0']);
+    // the sender sees that it was read
+    expect((await thread(IVA, HAL))[0]!.read_at).not.toBeNull();
+    // her own unread messages are not touched by his reading
+    expect(await chats(IVA)).toEqual(['Hal:Hey Hal:me:1']);
+  });
+
+  it('comes in pages', async () => {
+    const all = await thread(HAL, IVA);
+    const first = await thread(HAL, IVA, null, 1);
+    expect(first.map((l) => l.body)).toEqual(['Hey Hal']);
+    expect((await thread(HAL, IVA, first[0]!.id, 1)).map((l) => l.body)).toEqual(['Hi Iva!']);
+    expect(await thread(HAL, IVA, all.at(-1)!.id)).toEqual([]);
+  });
+
+  it('refuses empty and over-long messages, and messages to anyone who is not a friend', async () => {
+    expect((await send(HAL, IVA, '   ')).status).toBe('empty');
+    expect((await send(HAL, IVA, 'x'.repeat(501))).status).toBe('too_long');
+    expect((await send(HAL, IVA, 'x'.repeat(500))).status).toBe('sent');
+    expect((await send(HAL, JON, 'hello stranger')).status).toBe('not_friends');
+    // a request that was not accepted is not enough
+    await as(HAL, 'select * from public.add_friend($1)', ['Jon']);
+    expect((await send(HAL, JON, 'hello?')).status).toBe('not_friends');
+    await as(HAL, 'select public.remove_friend($1)', [JON]);
+    // nobody can read somebody else's conversation
+    expect(await thread(JON, IVA)).toEqual([]);
+  });
+
+  it('stars out the words on the blocked list, as whole words, in any letter case', async () => {
+    await db.query("insert into public.blocked_words (word) values ('darn'), ('silly goose')");
+    await expect(db.query("insert into public.blocked_words (word) values ('Shout')")).rejects.toThrow(/check/);
+    await expect(db.query("insert into public.blocked_words (word) values ('a.*')")).rejects.toThrow(/check/);
+    expect((await send(HAL, IVA, 'DARN it, you Silly Goose! darnation')).body).toBe(
+      '**** it, you ***********! darnation',
+    );
+    await db.query('delete from public.blocked_words');
+  });
+
+  it('holds back a player who sends more than 20 messages in a minute', async () => {
+    await db.query("delete from public.messages where sender = $1 and created_at > now() - interval '1 minute'", [IVA]);
+    for (let i = 0; i < 20; i++) expect((await send(IVA, HAL, `message ${i}`)).status).toBe('sent');
+    expect((await send(IVA, HAL, 'one more')).status).toBe('too_fast');
+    // a minute later it is fine again
+    await db.query("update public.messages set created_at = now() - interval '2 minutes' where sender = $1", [IVA]);
+    expect((await send(IVA, HAL, 'one more')).status).toBe('sent');
+  });
+
+  it('blocking ends the friendship, stops messages and requests both ways, and hides the conversation', async () => {
+    await as(IVA, 'select public.block_player($1)', [HAL]);
+    expect(((await as(HAL, 'select * from public.my_friends()')).rows as unknown[]).length).toBe(0);
+    expect((await send(HAL, IVA, 'are you there?')).status).toBe('not_friends');
+    expect((await send(IVA, HAL, 'bye')).status).toBe('not_friends');
+    // he is told nobody has that name; she is told she blocked him
+    expect((await as(HAL, 'select * from public.add_friend($1)', ['Iva'])).rows[0]).toEqual({
+      status: 'not_found',
+      username: null,
+    });
+    expect((await as(IVA, 'select * from public.add_friend($1)', ['Hal'])).rows[0]).toEqual({
+      status: 'blocked',
+      username: 'Hal',
+    });
+    // she no longer sees the conversation in her list; he still has his copy
+    expect(await chats(IVA)).toEqual([]);
+    expect((await chats(HAL)).length).toBe(1);
+    expect(
+      ((await as(IVA, 'select * from public.my_blocks()')).rows as { username: string }[]).map((r) => r.username),
+    ).toEqual(['Hal']);
+    // blocking twice, yourself, or nobody does nothing
+    await as(IVA, 'select public.block_player($1)', [HAL]);
+    await as(IVA, 'select public.block_player($1)', [IVA]);
+    await as(IVA, 'select public.block_player($1)', ['00000000-0000-0000-0000-00000000ffff']);
+    expect(Number((await db.query<{ n: string }>('select count(*) as n from public.blocks')).rows[0]!.n)).toBe(1);
+  });
+
+  it('unblocking lets them become friends again (by a new request)', async () => {
+    await as(IVA, 'select public.unblock_player($1)', [HAL]);
+    expect((await as(IVA, 'select * from public.my_blocks()')).rows).toEqual([]);
+    expect((await send(HAL, IVA, 'hi again')).status).toBe('not_friends');
+    await befriend(HAL, IVA);
+    expect((await send(HAL, IVA, 'hi again')).status).toBe('sent');
+    expect((await chats(IVA))[0]).toMatch(/^Hal:hi again:them:/);
+  });
+
+  it('a report keeps the reason, the note and the last messages, for the owner only', async () => {
+    expect(await report(IVA, HAL, 'harassment', '  He keeps writing  ')).toEqual({ status: 'sent' });
+    const row = (
+      await db.query<{
+        reporter: string;
+        reported: string;
+        reported_username: string;
+        reason: string;
+        details: string;
+        recent_messages: { from: string; body: string }[];
+      }>('select * from public.reports')
+    ).rows[0]!;
+    expect(row).toMatchObject({ reporter: IVA, reported: HAL, reported_username: 'Hal', reason: 'harassment' });
+    expect(row.details).toBe('He keeps writing');
+    expect(row.recent_messages.length).toBe(20);
+    expect(row.recent_messages.at(-1)).toMatchObject({ from: 'reported', body: 'hi again' });
+    // players cannot read, change or remove reports
+    for (const sql of [
+      'select * from public.reports',
+      'delete from public.reports',
+      'update public.reports set handled = true',
+    ]) {
+      await expect(as(HAL, sql)).rejects.toThrow(/permission denied/);
+    }
+  });
+
+  it('refuses a report without a proper reason, about nobody, or about yourself, and too many in a day', async () => {
+    expect(await report(IVA, HAL, 'boring')).toEqual({ status: 'invalid' });
+    expect(await report(IVA, HAL, 'other', 'x'.repeat(501))).toEqual({ status: 'invalid' });
+    expect(await report(IVA, '00000000-0000-0000-0000-00000000ffff', 'spam')).toEqual({ status: 'not_found' });
+    expect(await report(IVA, IVA, 'spam')).toEqual({ status: 'yourself' });
+    // a report about somebody you never wrote to is fine: it has no messages
+    expect(await report(JON, HAL, 'name_or_picture')).toEqual({ status: 'sent' });
+    for (let i = 0; i < 9; i++) expect((await report(JON, IVA, 'spam')).status).toBe('sent');
+    expect(await report(JON, IVA, 'spam')).toEqual({ status: 'too_many' });
+  });
+
+  it('a report outlives the account it is about; it is gone after a year', async () => {
+    const TMP = '00000000-0000-0000-0000-0000000000d2';
+    await signUp(TMP, { name: 'Gone Soon' });
+    await report(HAL, TMP, 'hate');
+    await as(TMP, 'select public.delete_account()');
+    const kept = (
+      await db.query<{ reported: string | null; reported_username: string }>(
+        "select reported, reported_username from public.reports where reported_username = 'GoneSoon'",
+      )
+    ).rows;
+    expect(kept).toEqual([{ reported: null, reported_username: 'GoneSoon' }]);
+    await db.query(
+      "update public.reports set created_at = now() - interval '13 months' where reported_username = 'GoneSoon'",
+    );
+    await send(HAL, IVA, 'tidy up');
+    expect((await db.query("select * from public.reports where reported_username = 'GoneSoon'")).rows).toEqual([]);
+  });
+
+  it('is closed to visitors, and the tables cannot be read or written directly', async () => {
+    for (const call of [
+      `send_message('${IVA}', 'hi')`,
+      `conversation('${IVA}')`,
+      `mark_read('${IVA}')`,
+      'my_conversations()',
+      `block_player('${IVA}')`,
+      `unblock_player('${IVA}')`,
+      'my_blocks()',
+      `report_player('${IVA}', 'spam')`,
+    ]) {
+      await expect(as(null, `select public.${call}`)).rejects.toThrow(/permission denied/);
+    }
+    for (const table of ['messages', 'blocks', 'blocked_words', 'reports']) {
+      await expect(as(HAL, `select * from public.${table}`)).rejects.toThrow(/permission denied/);
+    }
+    await expect(as(HAL, `select public.blocked_between('${HAL}', '${IVA}')`)).rejects.toThrow(/permission denied/);
+    await expect(
+      as(HAL, 'insert into public.messages (sender, recipient, body) values ($1, $2, $3)', [IVA, HAL, 'fake']),
+    ).rejects.toThrow(/permission denied/);
+  });
+
+  it('a deleted account takes its messages and blocks with it', async () => {
+    await as(IVA, 'select public.block_player($1)', [JON]);
+    await as(HAL, 'select public.delete_account()');
+    expect(await chats(IVA)).toEqual([]);
+    expect(Number((await db.query<{ n: string }>('select count(*) as n from public.messages')).rows[0]!.n)).toBe(0);
+    await as(JON, 'select public.delete_account()');
+    expect((await as(IVA, 'select * from public.my_blocks()')).rows).toEqual([]);
+  });
+});

@@ -18,6 +18,8 @@ jest.mock('@/account', () => ({
           profile: { id: 'me', publicId: '48213377', username: 'Ana', avatarUrl: null },
         }
       : { available: true, status: 'signedOut', profile: null },
+  messages: { loadBlocked: jest.fn(async () => undefined) },
+  useMessages: () => ({ status: 'ready', chats: [], unread: 0, threads: {}, blocked: [] }),
   useFriends: () => {
     const { useSyncExternalStore } = jest.requireActual<typeof ReactModule>('react');
     const current = mockHolder.friends!;

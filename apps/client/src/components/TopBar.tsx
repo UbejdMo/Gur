@@ -1,12 +1,13 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { account, friends, useAccount, useFriends } from '@/account';
+import { account, friends, useAccount, useFriends, useMessages } from '@/account';
 import { Avatar } from './Avatar';
 import { FriendsPanel } from './FriendsPanel';
 import { FullscreenButton } from './FullscreenButton';
 import { ChatIcon, FriendsIcon } from './icons';
 import { MessagesPanel } from './MessagesPanel';
+import type { Other } from './MessagesPanel';
 import { Popover } from './Popover';
 import { ProfilePanel } from './ProfilePanel';
 import { colors } from '@/theme';
@@ -28,6 +29,9 @@ type Open = 'profile' | 'friends' | 'messages' | null;
 export function TopBar() {
   const { available, status, profile } = useAccount();
   const asking = useFriends().people.filter((p) => p.state === 'incoming').length;
+  const { unread } = useMessages();
+  /** The conversation the messages panel opens on, when it was opened from a friend. */
+  const [chatWith, setChatWith] = useState<Other | null>(null);
   const [chosen, setOpen] = useState<Open>(null);
   // Signed out (or the account deleted) from inside a panel: the panel has nothing left to show.
   const open = profile ? chosen : null;
@@ -60,11 +64,19 @@ export function TopBar() {
             <>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Messages"
-                onPress={() => setOpen('messages')}
+                accessibilityLabel={unread ? `Messages, ${unread} unread` : 'Messages'}
+                onPress={() => {
+                  setChatWith(null);
+                  setOpen('messages');
+                }}
                 style={({ pressed }) => [styles.icon, pressed && styles.pressed]}
               >
                 <ChatIcon size={22} />
+                {unread > 0 && (
+                  <View style={styles.badge} testID="unread-badge">
+                    <Text style={styles.badgeText}>{unread > 99 ? '99+' : unread}</Text>
+                  </View>
+                )}
               </Pressable>
               <Pressable
                 accessibilityRole="button"
@@ -126,10 +138,16 @@ export function TopBar() {
             />
           </Popover>
           <Popover title="Friends" open={open === 'friends'} onClose={() => setOpen(null)} testID="friends-panel">
-            <FriendsPanel profile={profile} />
+            <FriendsPanel
+              profile={profile}
+              onMessage={(friend) => {
+                setChatWith(friend);
+                setOpen('messages');
+              }}
+            />
           </Popover>
           <Popover title="Messages" open={open === 'messages'} onClose={() => setOpen(null)}>
-            <MessagesPanel />
+            <MessagesPanel start={chatWith} />
           </Popover>
         </>
       )}

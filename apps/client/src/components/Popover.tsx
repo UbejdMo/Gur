@@ -31,7 +31,10 @@ export function Popover({ title, open, onClose, children, place = 'topRight', te
         style={[
           styles.panel,
           { width, top, maxHeight: screen.height - top - insets.bottom - 16 },
-          place === 'topRight' ? { right: Math.max(12, insets.right + 12) } : { left: (screen.width - width) / 2 },
+          place === 'topRight'
+            ? // Under the buttons: the first screen's content is at most 960 wide, centred, with 20 to spare.
+              { right: Math.max(12 + insets.right, (screen.width - 960) / 2 + 20) }
+            : { left: (screen.width - width) / 2 },
         ]}
         accessibilityViewIsModal
         testID={testID}

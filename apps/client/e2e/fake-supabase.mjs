@@ -20,6 +20,17 @@ const codes = new Map();
 const tokens = new Map();
 /** Friend requests and friendships: who asked whom, and whether it was accepted. */
 let friendships = [];
+/** Blocks (who blocked whom), messages, and reports, as in supabase/migrations/0004_messages.sql. */
+let blocks = [];
+let messages = [];
+const reports = [];
+let messageId = 1;
+const blockedBetween = (a, b) =>
+  blocks.some((k) => (k.blocker === a && k.blocked === b) || (k.blocker === b && k.blocked === a));
+const friendsWith = (a, b) =>
+  friendships.some(
+    (f) => f.accepted && ((f.requester === a && f.addressee === b) || (f.requester === b && f.addressee === a)),
+  );
 let players = 0;
 
 // A name that is always taken, for the "somebody already has that name" case.
@@ -177,6 +188,10 @@ const server = createServer((request, response) => {
           const answer = (status) => send(response, 200, [{ status, username: them?.username ?? null }]);
           if (!them) return answer('not_found');
           if (them.id === me) return answer('yourself');
+          if (blocks.some((k) => k.blocker === me && k.blocked === them.id)) return answer('blocked');
+          if (blocks.some((k) => k.blocker === them.id && k.blocked === me)) {
+            return send(response, 200, [{ status: 'not_found', username: null }]);
+          }
           const row = between(them.id);
           if (row?.accepted) return answer('already');
           if (row?.requester === me) return answer('waiting');
@@ -198,12 +213,133 @@ const server = createServer((request, response) => {
       }
     }
 
+    // Messages, blocking and reporting, in short.
+    const messageCalls = [
+      'send_message',
+      'conversation',
+      'mark_read',
+      'my_conversations',
+      'block_player',
+      'unblock_player',
+      'my_blocks',
+      'report_player',
+    ];
+    const call = url.pathname.startsWith('/rest/v1/rpc/') ? url.pathname.split('/').pop() : '';
+    if (messageCalls.includes(call)) {
+      const me = userOf(request);
+      if (!me) return send(response, 401, { code: '42501', message: 'permission denied' });
+      const args = await bodyOf(request);
+      const ours = (other) => (m) =>
+        (m.sender === me && m.recipient === other) || (m.sender === other && m.recipient === me);
+      const asLine = (m) => ({
+        id: m.id,
+        from_me: m.sender === me,
+        body: m.body,
+        created_at: m.created_at,
+        read_at: m.read_at,
+      });
+      switch (call) {
+        case 'send_message': {
+          const body = String(args.message ?? '').trim();
+          const answer = (status, row = {}) =>
+            send(response, 200, [{ status, id: null, body: null, created_at: null, ...row }]);
+          if (!body) return answer('empty');
+          if (body.length > 500) return answer('too_long');
+          if (!friendsWith(me, args.to_player) || blockedBetween(me, args.to_player)) return answer('not_friends');
+          const m = {
+            id: messageId++,
+            sender: me,
+            recipient: args.to_player,
+            body,
+            created_at: new Date().toISOString(),
+            read_at: null,
+          };
+          messages.push(m);
+          return answer('sent', { id: m.id, body: m.body, created_at: m.created_at });
+        }
+        case 'conversation':
+          return send(
+            response,
+            200,
+            messages
+              .filter(ours(args.other))
+              .filter((m) => args.before_id === null || args.before_id === undefined || m.id < args.before_id)
+              .sort((a, b) => b.id - a.id)
+              .slice(0, args.max_rows ?? 50)
+              .map(asLine),
+          );
+        case 'mark_read':
+          for (const m of messages)
+            if (m.sender === args.other && m.recipient === me && !m.read_at) m.read_at = new Date().toISOString();
+          return send(response, 204);
+        case 'my_conversations': {
+          const last = new Map();
+          for (const m of messages) {
+            if (m.sender !== me && m.recipient !== me) continue;
+            const other = m.sender === me ? m.recipient : m.sender;
+            if (!last.has(other) || last.get(other).id < m.id) last.set(other, m);
+          }
+          return send(
+            response,
+            200,
+            [...last.entries()]
+              .filter(([other]) => profiles.has(other) && !blocks.some((k) => k.blocker === me && k.blocked === other))
+              .map(([other, m]) => ({
+                ...profiles.get(other),
+                last_body: m.body,
+                last_at: m.created_at,
+                last_from_me: m.sender === me,
+                unread: messages.filter((u) => u.sender === other && u.recipient === me && !u.read_at).length,
+              }))
+              .sort((a, b) => b.last_at.localeCompare(a.last_at)),
+          );
+        }
+        case 'block_player':
+          if (
+            args.who !== me &&
+            profiles.has(args.who) &&
+            !blocks.some((k) => k.blocker === me && k.blocked === args.who)
+          ) {
+            blocks.push({ blocker: me, blocked: args.who });
+          }
+          friendships = friendships.filter(
+            (f) =>
+              !((f.requester === me && f.addressee === args.who) || (f.requester === args.who && f.addressee === me)),
+          );
+          return send(response, 204);
+        case 'unblock_player':
+          blocks = blocks.filter((k) => !(k.blocker === me && k.blocked === args.who));
+          return send(response, 204);
+        case 'my_blocks':
+          return send(
+            response,
+            200,
+            blocks
+              .filter((k) => k.blocker === me)
+              .map((k) => profiles.get(k.blocked))
+              .filter(Boolean),
+          );
+        case 'report_player': {
+          const reasons = ['harassment', 'hate', 'spam', 'name_or_picture', 'cheating', 'other'];
+          if (!reasons.includes(args.why)) return send(response, 200, 'invalid');
+          if (!profiles.has(args.who)) return send(response, 200, 'not_found');
+          reports.push({ reporter: me, reported: args.who, reason: args.why, details: args.note ?? null });
+          return send(response, 200, 'sent');
+        }
+      }
+    }
+
+    // What the browser tests may look at: the reports made so far.
+    if (url.pathname === '/test/reports') return send(response, 200, reports);
+
     // A player deletes their own account: the profile goes, and their sign-ins stop working.
     if (url.pathname === '/rest/v1/rpc/delete_account' && request.method === 'POST') {
       const id = userOf(request);
       if (!id) return send(response, 401, { code: '42501', message: 'permission denied for function delete_account' });
       profiles.delete(id);
       friendships = friendships.filter((f) => f.requester !== id && f.addressee !== id);
+      blocks = blocks.filter((k) => k.blocker !== id && k.blocked !== id);
+      messages = messages.filter((m) => m.sender !== id && m.recipient !== id);
       for (const [token, owner] of tokens) if (owner === id) tokens.delete(token);
       return send(response, 204);
     }

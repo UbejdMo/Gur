@@ -9,7 +9,15 @@
  * invite them into a lobby; a guest is only connected while in a lobby.
  */
 import { io } from 'socket.io-client';
-import type { Ack, ClientToServerEvents, GameAction, Invite, LobbySettings, LobbyState } from '@gur/server/protocol';
+import type {
+  Ack,
+  ClientToServerEvents,
+  GameAction,
+  Invite,
+  LobbySettings,
+  LobbyState,
+  News,
+} from '@gur/server/protocol';
 import { account } from '@/account';
 import { serverUrl } from './config';
 
@@ -78,6 +86,7 @@ export class Connection {
   private snapshot: OnlineSnapshot = { status: 'idle', lobby: null, clockOffset: 0, notice: null };
   private readonly listeners = new Set<() => void>();
   private readonly inviteListeners = new Set<(invite: Invite) => void>();
+  private readonly newsListeners = new Set<(news: News) => void>();
   /** Signed in with the app open: the server knows, so friends can invite you. */
   private present = false;
   /** The server has been told who you are on the current connection. */
@@ -187,6 +196,18 @@ export class Connection {
     return () => this.inviteListeners.delete(listener);
   }
 
+  /** Calls `listener` whenever a conversation has something new. Returns a way to stop. */
+  onNews(listener: (news: News) => void): () => void {
+    this.newsListeners.add(listener);
+    return () => this.newsListeners.delete(listener);
+  }
+
+  /** Tells the server you just wrote to a friend (their account id), so their apps show it at once. */
+  async poke(to: string): Promise<Ack> {
+    if (!this.present) return { ok: false, error: 'Sign in first' };
+    return this.request('poke', await this.signed({ to }));
+  }
+
   /** Host only: invites a friend (their account id) into your lobby. */
   async invite(userId: string): Promise<Ack<{ seconds: number }>> {
     return this.request<{ seconds: number }>('invite', await this.signed({ userId }));
@@ -221,6 +242,9 @@ export class Connection {
     });
     socket.on('invited', (invite: Invite) => {
       for (const listener of [...this.inviteListeners]) listener(invite);
+    });
+    socket.on('news', (news: News) => {
+      for (const listener of [...this.newsListeners]) listener(news);
     });
     return socket;
   }

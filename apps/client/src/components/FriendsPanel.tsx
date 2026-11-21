@@ -1,27 +1,38 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { friends, useFriends } from '@/account';
+import { friends, messages, useFriends, useMessages } from '@/account';
 import type { Profile } from '@/account/account';
 import type { Person } from '@/account/friends';
 import { Avatar } from './Avatar';
 import { colors } from '@/theme';
 
+type Props = {
+  profile: Profile;
+  /** Opens the conversation with a friend. */
+  onMessage?: (friend: Person) => void;
+};
+
 /**
  * Your friends, under the friends button at the top right: add one by username or ID, answer
- * the requests you got, and see who you are friends with and who you asked.
+ * the requests you got (or block whoever sent one), see who you are friends with and who you
+ * asked, and the players you blocked.
  */
-export function FriendsPanel({ profile }: { profile: Profile }) {
+export function FriendsPanel({ profile, onMessage }: Props) {
   const { status: listStatus, people } = useFriends();
+  const { blocked } = useMessages();
   // Opening the panel looks for news at once, rather than waiting for the next half-minute check.
   useEffect(() => {
     void friends.refresh();
+    void messages.loadBlocked();
   }, []);
   const [who, setWho] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   /** The friend the player is being asked "really remove?" about. */
   const [removing, setRemoving] = useState<string | null>(null);
+  /** The player who sent a request and is being asked "really block?" about. */
+  const [blocking, setBlocking] = useState<string | null>(null);
 
   const add = async () => {
     setBusy(true);
@@ -33,6 +44,7 @@ export function FriendsPanel({ profile }: { profile: Profile }) {
   /** Runs a change on one person and shows what went wrong, if anything. */
   const act = async (change: Promise<string | null>) => {
     setRemoving(null);
+    setBlocking(null);
     const problem = await change;
     setMessage(problem ? { ok: false, text: problem } : null);
   };
@@ -83,16 +95,46 @@ export function FriendsPanel({ profile }: { profile: Profile }) {
       {incoming.length > 0 && (
         <View style={styles.card} testID="requests">
           <Text style={styles.label}>Requests</Text>
-          {incoming.map((p) => (
-            <Row key={p.id} person={p}>
-              <Small label={`Accept ${p.username}`} on onPress={() => void act(friends.accept(p.id))}>
-                Accept
-              </Small>
-              <Small label={`Decline ${p.username}`} onPress={() => void act(friends.remove(p.id))}>
-                Decline
-              </Small>
-            </Row>
-          ))}
+          {incoming.map((p) =>
+            blocking === p.id ? (
+              <View key={p.id} style={styles.confirm}>
+                <Text style={styles.confirmText}>
+                  Block {p.username}? Their request goes, and neither of you can send the other a request or a message.
+                  They are not told.
+                </Text>
+                <View style={styles.confirmRow}>
+                  <Small
+                    label={`Yes, block ${p.username}`}
+                    danger
+                    onPress={() =>
+                      void act(
+                        messages
+                          .block(p.id)
+                          .then((problem) => (problem ? problem : friends.refresh().then(() => null))),
+                      )
+                    }
+                  >
+                    Block
+                  </Small>
+                  <Small label={`Keep ${p.username}'s request`} onPress={() => setBlocking(null)}>
+                    Cancel
+                  </Small>
+                </View>
+              </View>
+            ) : (
+              <PersonRow key={p.id} person={p}>
+                <Small label={`Accept ${p.username}`} on onPress={() => void act(friends.accept(p.id))}>
+                  Accept
+                </Small>
+                <Small label={`Decline ${p.username}`} onPress={() => void act(friends.remove(p.id))}>
+                  Decline
+                </Small>
+                <Small label={`Block ${p.username}`} quiet onPress={() => setBlocking(p.id)}>
+                  Block
+                </Small>
+              </PersonRow>
+            ),
+          )}
         </View>
       )}
 
@@ -109,20 +151,25 @@ export function FriendsPanel({ profile }: { profile: Profile }) {
         )}
         {mine.map((p) =>
           removing === p.id ? (
-            <Row key={p.id} person={p}>
+            <PersonRow key={p.id} person={p}>
               <Small label={`Yes, remove ${p.username}`} danger onPress={() => void act(friends.remove(p.id))}>
                 Remove
               </Small>
               <Small label={`Keep ${p.username}`} onPress={() => setRemoving(null)}>
                 Keep
               </Small>
-            </Row>
+            </PersonRow>
           ) : (
-            <Row key={p.id} person={p}>
+            <PersonRow key={p.id} person={p}>
+              {onMessage && (
+                <Small label={`Message ${p.username}`} on onPress={() => onMessage(p)}>
+                  Message
+                </Small>
+              )}
               <Small label={`Remove ${p.username}`} quiet onPress={() => setRemoving(p.id)}>
                 Remove
               </Small>
-            </Row>
+            </PersonRow>
           ),
         )}
       </View>
@@ -131,7 +178,7 @@ export function FriendsPanel({ profile }: { profile: Profile }) {
         <View style={styles.card} testID="sent">
           <Text style={styles.label}>Waiting for an answer</Text>
           {outgoing.map((p) => (
-            <Row key={p.id} person={p}>
+            <PersonRow key={p.id} person={p}>
               <Small
                 label={`Take back the request to ${p.username}`}
                 quiet
@@ -139,7 +186,20 @@ export function FriendsPanel({ profile }: { profile: Profile }) {
               >
                 Take back
               </Small>
-            </Row>
+            </PersonRow>
+          ))}
+        </View>
+      )}
+
+      {blocked.length > 0 && (
+        <View style={styles.card} testID="blocked">
+          <Text style={styles.label}>Blocked</Text>
+          {blocked.map((p) => (
+            <PersonRow key={p.id} person={p}>
+              <Small label={`Unblock ${p.username}`} quiet onPress={() => void act(messages.unblock(p.id))}>
+                Unblock
+              </Small>
+            </PersonRow>
           ))}
         </View>
       )}
@@ -148,7 +208,13 @@ export function FriendsPanel({ profile }: { profile: Profile }) {
 }
 
 /** One player: picture, name and ID, with the buttons for them at the end. */
-function Row({ person, children }: { person: Person; children: ReactNode }) {
+export function PersonRow({
+  person,
+  children,
+}: {
+  person: Pick<Person, 'username' | 'avatarUrl' | 'publicId'>;
+  children?: ReactNode;
+}) {
   return (
     <View style={styles.row} testID={`person-${person.username}`}>
       <Avatar name={person.username} url={person.avatarUrl} size={40} />
@@ -163,7 +229,7 @@ function Row({ person, children }: { person: Person; children: ReactNode }) {
   );
 }
 
-function Small({
+export function Small({
   label,
   onPress,
   on,
@@ -195,6 +261,9 @@ function Small({
 const styles = StyleSheet.create({
   box: { gap: 12 },
   card: { backgroundColor: colors.table, borderRadius: 14, padding: 12, gap: 10 },
+  confirm: { gap: 8, paddingVertical: 4 },
+  confirmText: { color: colors.text, fontSize: 14, lineHeight: 20 },
+  confirmRow: { flexDirection: 'row', gap: 8 },
   label: { color: colors.textMuted, fontSize: 12, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
   hint: { color: colors.textMuted, fontSize: 13, textAlign: 'center', maxWidth: 340 },
   strong: { color: colors.text, fontWeight: '800' },

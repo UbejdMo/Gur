@@ -67,6 +67,12 @@ The first run applies the files that were run by hand before; that is harmless, 
 
 Every pull request rehearses the update first (`pnpm --filter @gur/server rehearse:migrations`): the same tool applies all the files to a database made for the test.
 
+## Reports, and the list of blocked words
+
+Players can report each other from a conversation. Reports land in the database, and nobody is told: look at them in the Supabase dashboard under **Table Editor > reports**. Each one has the reason, the player's note, the reported player's name and ID, and a copy of the last 20 messages between the two. When you have dealt with one, tick **handled**. The app stores expect reports to be acted on: check them regularly, and remove accounts that break the rules (**Authentication > Users**, then delete the user; the profile, friends and messages go with it). Reports are deleted after a year.
+
+Words in **Table Editor > blocked_words** are starred out of messages ("idiot" becomes "\*\*\*\*\*"), as whole words, in any letter case. The list starts empty: add a row per word, in lower case, letters and digits only (a phrase of several words is fine).
+
 ## How it fits together
 
 - The app sends the player to Google through Supabase and gets a sign-in token back. The token is kept by the browser, so the player stays signed in.
@@ -74,6 +80,7 @@ Every pull request rehearses the update first (`pnpm --filter @gur/server rehear
 - When a signed-in player opens or joins a lobby, the app sends the token along. The game server asks Supabase whose token it is and reads that player's profile, so a name and picture at the table cannot be made up. A player without a token is a guest under the name they typed.
 - A player can delete their account on the first screen. That removes the sign-in and the profile from Supabase at once; the player's own request to the database does it (`delete_account` in `0002_delete_account.sql`), so no secret key is involved.
 - Friends (`0003_friends.sql`): a player asks another by username or ID, the other accepts or declines. The app calls four functions in the database; the table behind them cannot be read or written directly, so a player only ever sees and changes what is between them and somebody else.
+- Messages (`0004_messages.sql`): only friends can write to each other; a message goes straight into the database through `send_message`, and the app then asks the game server to nudge the friend's open apps (`poke`), which fetch it. Blocking ends the friendship and stops messages and requests both ways; the blocked player is never told.
 - Signing in works in the web game. The Android and iOS apps get it with their store builds.
 
 ## Trying it without a Supabase project
