@@ -15,7 +15,7 @@ export type Person = {
 };
 
 /** What the database answers when you ask somebody to be friends. */
-export type AddStatus = 'sent' | 'friends' | 'already' | 'waiting' | 'not_found' | 'yourself' | 'full';
+export type AddStatus = 'sent' | 'friends' | 'already' | 'waiting' | 'not_found' | 'yourself' | 'full' | 'blocked';
 
 export type FriendsSnapshot = {
   /** 'idle' until the list was asked for; 'failed' when it could not be fetched. */
@@ -49,6 +49,8 @@ export function addMessage(status: AddStatus, username: string | null): string {
       return 'That is you';
     case 'full':
       return 'You have too many friends or open requests. Remove some first';
+    case 'blocked':
+      return `You blocked ${name}. Unblock them first (under "Blocked" below)`;
   }
 }
 

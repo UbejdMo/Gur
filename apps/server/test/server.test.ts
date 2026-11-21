@@ -465,3 +465,87 @@ describe('inviting friends', () => {
     expect(await invite(ana, BEN.userId)).toMatchObject({ error: 'You can only invite your friends' });
   });
 });
+
+describe('nudging a friend about a new message', () => {
+  const ANA = {
+    userId: '00000000-0000-4000-8000-0000000000a1',
+    username: 'AnaK',
+    publicId: '11111111',
+    avatarUrl: null,
+  };
+  const BEN = {
+    userId: '00000000-0000-4000-8000-0000000000b1',
+    username: 'BenM',
+    publicId: '22222222',
+    avatarUrl: null,
+  };
+  const CEM = {
+    userId: '00000000-0000-4000-8000-0000000000c1',
+    username: 'CemB',
+    publicId: '33333333',
+    avatarUrl: null,
+  };
+  const accounts: Record<string, typeof ANA> = { 'token-ana': ANA, 'token-ben': BEN, 'token-cem': CEM };
+  const friendsOf: Record<string, string[]> = { [ANA.userId]: [BEN.userId], [BEN.userId]: [ANA.userId] };
+
+  async function setUp() {
+    let clock = 5_000_000;
+    const url = await startServer({
+      verify: async (token) => accounts[token] ?? null,
+      areFriends: async (token, userId) => (friendsOf[accounts[token]?.userId ?? ''] ?? []).includes(userId),
+      now: () => clock,
+    });
+    return { url, tick: (ms: number) => (clock += ms) };
+  }
+  async function present(url: string, token: string) {
+    const player = await connect(url);
+    const news: unknown[] = [];
+    player.socket.on('news', (n) => news.push(n));
+    await ask((reply) => player.socket.emit('hello', { token }, reply));
+    return { ...player, news };
+  }
+  const poke = (player: { socket: Client }, to: string, token: string | null = 'token-ana') =>
+    ask((reply) => player.socket.emit('poke', { to, token }, reply));
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+
+  it("reaches all the friend's open apps, and the sender's other apps, but not the sending one", async () => {
+    const { url } = await setUp();
+    const anaPhone = await present(url, 'token-ana');
+    const anaLaptop = await present(url, 'token-ana');
+    const ben = await present(url, 'token-ben');
+    expect(await poke(anaPhone, BEN.userId)).toEqual({ ok: true });
+    await settle();
+    expect(ben.news).toEqual([{ with: ANA.userId }]);
+    expect(anaLaptop.news).toEqual([{ with: BEN.userId }]);
+    expect(anaPhone.news).toEqual([]);
+  });
+
+  it('only between friends, with a valid sign-in, about a real account', async () => {
+    const { url } = await setUp();
+    const ana = await present(url, 'token-ana');
+    const cem = await present(url, 'token-cem');
+    expect(await poke(ana, CEM.userId)).toMatchObject({ ok: false, error: 'You can only write to your friends' });
+    expect(await poke(ana, BEN.userId, 'token-nobody')).toMatchObject({ error: expect.stringMatching(/sign-in/) });
+    expect(await poke(ana, BEN.userId, null)).toMatchObject({ error: expect.stringMatching(/sign-in/) });
+    expect(await poke(ana, 'not-an-id')).toMatchObject({ error: 'That player does not exist' });
+    expect(await ask((reply) => ana.socket.emit('poke', null as never, reply))).toMatchObject({ ok: false });
+    await settle();
+    expect(cem.news).toEqual([]);
+    const lonely = await startServer({ verify: async (token) => accounts[token] ?? null });
+    const alone = await present(lonely, 'token-ana');
+    expect(await poke(alone, BEN.userId)).toMatchObject({ error: 'You can only write to your friends' });
+  });
+
+  it('more than 30 pokes a minute from one app are let through quietly but not passed on', async () => {
+    const { url, tick } = await setUp();
+    const ana = await present(url, 'token-ana');
+    const ben = await present(url, 'token-ben');
+    for (let i = 0; i < 32; i++) expect(await poke(ana, BEN.userId)).toEqual({ ok: true });
+    await settle();
+    expect(ben.news).toHaveLength(30);
+    tick(60_001);
+    await poke(ana, BEN.userId);
+    await settle();
+    expect(ben.news).toHaveLength(31);
+  });
+});

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Invite } from '@gur/server/protocol';
-import { useAccount } from '@/account';
+import { messages, useAccount } from '@/account';
 import { online } from '@/online/connection';
 import { Avatar } from './Avatar';
 import { colors } from '@/theme';
@@ -11,8 +11,9 @@ import { colors } from '@/theme';
 type Shown = Invite & { until: number; key: number };
 
 /**
- * Keeps the server told whether you are signed in, so friends can invite you, and shows an
- * invitation when one comes: who invites you, Join and Not now, and the seconds left.
+ * Keeps the server told whether you are signed in, so friends can invite you and write to
+ * you, passes new-message nudges to the messages store, and shows an invitation when one
+ * comes: who invites you, Join and Not now, and the seconds left.
  * It sits over every screen, so an invite reaches you wherever you are in the app.
  */
 export function Invites() {
@@ -26,6 +27,12 @@ export function Invites() {
   useEffect(() => {
     online.setPresent(status === 'signedIn');
   }, [status]);
+
+  // Messages: a nudge from the server fetches what is new; sending a message nudges the friend.
+  useEffect(() => {
+    messages.setPoke((to) => void online.poke(to));
+    return online.onNews((news) => void messages.news(news.with));
+  }, []);
 
   useEffect(
     () =>

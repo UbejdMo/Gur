@@ -4,6 +4,8 @@ import type { AccountSnapshot } from './account';
 import { accountsConfig } from './config';
 import { Friends } from './friends';
 import type { FriendsSnapshot } from './friends';
+import { Messages } from './messages';
+import type { MessagesSnapshot } from './messages';
 import { supabaseBackend } from './supabaseBackend';
 
 const config = accountsConfig();
@@ -14,6 +16,9 @@ export const account = new Account(backend);
 
 /** The signed-in player's friends and requests. */
 export const friends = new Friends(backend?.friends ?? null);
+
+/** The signed-in player's messages, and the players they blocked. */
+export const messages = new Messages(backend?.messages ?? null);
 
 /** Your account as it is right now. */
 export function useAccount(): AccountSnapshot {
@@ -42,4 +47,24 @@ export function useFriends(): FriendsSnapshot {
     return () => clearInterval(timer);
   }, [status]);
   return useSyncExternalStore(friends.subscribe, friends.get, friends.get);
+}
+
+/**
+ * Your conversations as they are right now. Like useFriends: fetched while a screen uses it
+ * and you are signed in, and again every half minute while the game is in front of you.
+ */
+export function useMessages(): MessagesSnapshot {
+  const { status } = useAccount();
+  useEffect(() => {
+    if (status !== 'signedIn') {
+      messages.clear();
+      return;
+    }
+    void messages.refresh();
+    const timer = setInterval(() => {
+      if (typeof document === 'undefined' || document.visibilityState !== 'hidden') void messages.refresh();
+    }, LOOK_EVERY_MS);
+    return () => clearInterval(timer);
+  }, [status]);
+  return useSyncExternalStore(messages.subscribe, messages.get, messages.get);
 }

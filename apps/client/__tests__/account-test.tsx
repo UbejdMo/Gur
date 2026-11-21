@@ -11,7 +11,11 @@ import { LobbyRoom } from '@/components/LobbyRoom';
 import { PlayerPanel } from '@/components/PlayerPanel';
 
 // The app's one account is swapped for one over a stand-in service, different in each test.
-const mockHolder: { account: Account | null; people: Person[] } = { account: null, people: [] };
+const mockHolder: { account: Account | null; people: Person[]; unread: number } = {
+  account: null,
+  people: [],
+  unread: 0,
+};
 jest.mock('@/account', () => ({
   get account() {
     return mockHolder.account;
@@ -23,6 +27,15 @@ jest.mock('@/account', () => ({
   },
   useFriends: () => ({ status: 'ready', people: mockHolder.people }),
   friends: { refresh: jest.fn(async () => undefined) },
+  useMessages: () => ({ status: 'ready', chats: [], unread: mockHolder.unread, threads: {}, blocked: [] }),
+  messages: {
+    setPoke: jest.fn(),
+    news: jest.fn(async () => undefined),
+    refresh: jest.fn(async () => undefined),
+    loadBlocked: jest.fn(async () => undefined),
+    open: jest.fn(async () => undefined),
+    close: jest.fn(),
+  },
 }));
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn() },
@@ -36,6 +49,8 @@ jest.mock('@/online/connection', () => ({
     join: jest.fn(),
     setPresent: jest.fn(),
     onInvite: jest.fn(() => () => undefined),
+    onNews: jest.fn(() => () => undefined),
+    poke: jest.fn(async () => ({ ok: true })),
     get: jest.fn(() => ({ lobby: null })),
   },
 }));
@@ -121,6 +136,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockHolder.account = new Account(null);
   mockHolder.people = [];
+  mockHolder.unread = 0;
 });
 
 describe('names', () => {
@@ -377,11 +393,37 @@ describe('the top bar of the first screen', () => {
     expect(screen.getByRole('button', { name: 'Accept Cem' })).toBeOnTheScreen();
   });
 
-  it('messages are not there yet, and the panel says so', async () => {
+  it('opens your messages, with the number of unread messages on the button', async () => {
     mockHolder.account = (await started({ signedIn: true })).account;
+    mockHolder.unread = 3;
     await render(<TopBar />);
-    await fireEvent.press(screen.getByRole('button', { name: 'Messages' }));
-    expect(screen.getByTestId('messages-soon')).toHaveTextContent(/coming soon/);
+    expect(screen.getByTestId('unread-badge')).toHaveTextContent('3');
+    await fireEvent.press(screen.getByRole('button', { name: 'Messages, 3 unread' }));
+    expect(screen.getByTestId('conversations')).toBeOnTheScreen();
+  });
+
+  it('Message on a friend opens the conversation with them', async () => {
+    mockHolder.account = (await started({ signedIn: true })).account;
+    mockHolder.people = [friend('Ben', 'friend')];
+    await render(<TopBar />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Friends' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Message Ben' }));
+    expect(screen.queryByTestId('friends-panel')).toBeNull();
+    expect(screen.getByRole('header', { name: 'Ben' })).toBeOnTheScreen();
+    expect(screen.getByLabelText('Message to Ben')).toBeOnTheScreen();
+  });
+
+  it('passes nudges from the server on to the messages, and lets messages nudge friends', async () => {
+    const { messages } = jest.requireMock('@/account') as {
+      messages: { setPoke: jest.Mock; news: jest.Mock };
+    };
+    const { online } = jest.requireMock('@/online/connection') as { online: { onNews: jest.Mock; poke: jest.Mock } };
+    mockHolder.account = (await started({ signedIn: true })).account;
+    await render(<Invites />);
+    (online.onNews.mock.calls.at(-1)![0] as (n: { with: string }) => void)({ with: 'id-Ben' });
+    expect(messages.news).toHaveBeenCalledWith('id-Ben');
+    (messages.setPoke.mock.calls.at(-1)![0] as (to: string) => void)('id-Ben');
+    expect(online.poke).toHaveBeenCalledWith('id-Ben');
   });
 });
 

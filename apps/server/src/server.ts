@@ -20,6 +20,8 @@ interface Seat {
   code?: string;
   memberId?: string;
   userId?: string;
+  /** When this connection last poked, for the limit on pokes. */
+  pokes?: number[];
 }
 type GameSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, Seat>;
 
@@ -56,6 +58,8 @@ const room = (memberId: string) => `member:${memberId}`;
 const userRoom = (userId: string) => `user:${userId}`;
 const ACCOUNT_ID = /^[0-9a-f-]{36}$/i;
 export const INVITE_MS = 10_000;
+/** At most this many pokes a minute from one connection; more are ignored. */
+export const POKES_PER_MINUTE = 30;
 
 export function createGameServer(config: GameServerConfig = {}): GameServer {
   const http = createServer((req, res) => {
@@ -218,6 +222,26 @@ export function createGameServer(config: GameServerConfig = {}): GameServer {
         if (socket.data.userId) void socket.leave(userRoom(socket.data.userId));
         socket.data.userId = player?.userId;
         if (player) void socket.join(userRoom(player.userId));
+      }),
+    );
+
+    socket.on('poke', (request, reply) =>
+      answer(reply, async () => {
+        const to = request?.to;
+        if (typeof to !== 'string' || !ACCOUNT_ID.test(to)) throw new LobbyError('That player does not exist');
+        const player = await identify(request?.token);
+        if (!player) throw new LobbyError('Your sign-in has expired. Please sign in again');
+        // A poke carries nothing but "look at your conversation with me", and only between friends.
+        if (!config.areFriends || !(await config.areFriends(request.token as string, to))) {
+          throw new LobbyError('You can only write to your friends');
+        }
+        const time = now();
+        const recent = (socket.data.pokes ?? []).filter((at) => at > time - 60_000);
+        if (recent.length >= POKES_PER_MINUTE) return;
+        socket.data.pokes = [...recent, time];
+        io.to(userRoom(to)).emit('news', { with: player.userId });
+        // Your own other tabs and devices show what you sent too.
+        socket.to(userRoom(player.userId)).emit('news', { with: to });
       }),
     );
 
