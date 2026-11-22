@@ -61,6 +61,7 @@ function lobby(over: Partial<LobbyState> = {}): LobbyState {
       host: i === 0,
       avatarUrl: null,
       publicId: null,
+      chatId: `chat-${i}`,
     })),
     settings: { aceHigh: true, rounds: 1, fillWithBots: false },
     game: null,
@@ -189,7 +190,9 @@ describe('the waiting room', () => {
 
   it('alone, the host is told what is missing; with bots the empty seats say so', async () => {
     const alone = lobby({
-      members: [{ name: 'Ana', bot: false, connected: true, host: true, avatarUrl: null, publicId: null }],
+      members: [
+        { name: 'Ana', bot: false, connected: true, host: true, avatarUrl: null, publicId: null, chatId: 'chat-ana' },
+      ],
     });
     const onStart = jest.fn(async (): Promise<Ack> => ({ ok: true }));
     const view = await render(
@@ -282,6 +285,49 @@ describe('the online table', () => {
     expect(screen.getAllByTestId('rack-tile')).toHaveLength(14);
     expect(screen.getByTestId('log')).toHaveTextContent('You discarded red 9');
     expect(within(screen.getByLabelText('Tiles left for Ben')).getByTestId('last-discard')).toBeOnTheScreen();
+  });
+
+  it('pops what a player just said up over their seat for a few seconds; the chat button opens the chat', async () => {
+    jest.useFakeTimers();
+    const say = jest.fn(async (): Promise<Ack> => ({ ok: true }));
+    const fake = {
+      act: jest.fn(async () => ({ ok: true })),
+      next: jest.fn(),
+      say,
+      report: jest.fn(),
+    } as unknown as Connection;
+    const line = (id: number, seat: number, text: string, fresh: boolean) => ({
+      id,
+      from: `chat-${seat}`,
+      seat,
+      name: NAMES[seat]!,
+      text,
+      at: id,
+      fresh,
+    });
+    // Cem said something before you came back (history: no bubble); Ben just sent a fire
+    const chat = [line(1, 2, 'hello all', false), line(2, 1, '🔥', true)];
+    await render(
+      <OnlineTable
+        lobby={table(game(1))}
+        connection={fake}
+        clockOffset={0}
+        status="online"
+        onLeave={jest.fn()}
+        chat={chat}
+      />,
+    );
+    const ben = screen.getAllByTestId('seat').find((s) => /^Ben/.test(s.props.accessibilityLabel as string))!;
+    expect(within(ben).getByTestId('speech')).toHaveTextContent('🔥');
+    expect(screen.getAllByTestId('speech')).toHaveLength(1);
+    await act(() => jest.advanceTimersByTime(4_100));
+    expect(screen.queryByTestId('speech')).toBeNull();
+    jest.useRealTimers();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Chat, 2 unread' }));
+    expect(screen.getByText('hello all')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Send 👏' }));
+    expect(say).toHaveBeenCalledWith('👏');
   });
 
   it('says when the connection is lost', async () => {

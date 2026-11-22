@@ -48,8 +48,24 @@ describe('joining', () => {
     const state = lobby.stateFor(ben);
     expect(state).toMatchObject({ code: 'ABCDE', you: 1, game: null, turnEndsAt: null, nextRoundAt: null });
     expect(state.members).toEqual([
-      { name: 'Ana', bot: false, connected: true, host: true, avatarUrl: null, publicId: null },
-      { name: 'Ben', bot: false, connected: true, host: false, avatarUrl: null, publicId: null },
+      {
+        name: 'Ana',
+        bot: false,
+        connected: true,
+        host: true,
+        avatarUrl: null,
+        publicId: null,
+        chatId: expect.any(String),
+      },
+      {
+        name: 'Ben',
+        bot: false,
+        connected: true,
+        host: false,
+        avatarUrl: null,
+        publicId: null,
+        chatId: expect.any(String),
+      },
     ]);
     expect(lobby.stateFor(ana).you).toBe(0);
     expect(lobby.memberIds()).toEqual([ana, ben]);
@@ -85,7 +101,15 @@ describe('joining', () => {
     const ben = lobby.join('Ben');
     lobby.leave(ana);
     expect(lobby.stateFor(ben).members).toEqual([
-      { name: 'Ben', bot: false, connected: true, host: true, avatarUrl: null, publicId: null },
+      {
+        name: 'Ben',
+        bot: false,
+        connected: true,
+        host: true,
+        avatarUrl: null,
+        publicId: null,
+        chatId: expect.any(String),
+      },
     ]);
     expect(() => lobby.stateFor(ana)).toThrow(/not in this lobby/);
     expect(() => lobby.leave(ana)).toThrow(LobbyError);
@@ -102,8 +126,24 @@ describe('players with an account', () => {
     const id = lobby.join('whatever they typed', ana);
     lobby.join('Ben');
     expect(lobby.stateFor(id).members).toEqual([
-      { name: 'AnaK', bot: false, connected: true, host: true, avatarUrl: ana.avatarUrl, publicId: '48213377' },
-      { name: 'Ben', bot: false, connected: true, host: false, avatarUrl: null, publicId: null },
+      {
+        name: 'AnaK',
+        bot: false,
+        connected: true,
+        host: true,
+        avatarUrl: ana.avatarUrl,
+        publicId: '48213377',
+        chatId: expect.any(String),
+      },
+      {
+        name: 'Ben',
+        bot: false,
+        connected: true,
+        host: false,
+        avatarUrl: null,
+        publicId: null,
+        chatId: expect.any(String),
+      },
     ]);
   });
 
@@ -390,7 +430,15 @@ describe('rounds and the end of the match', () => {
     const back = lobby.stateFor(ana);
     expect(back.game).toBeNull();
     expect(back.members).toEqual([
-      { name: 'Ana', bot: false, connected: true, host: true, avatarUrl: null, publicId: null },
+      {
+        name: 'Ana',
+        bot: false,
+        connected: true,
+        host: true,
+        avatarUrl: null,
+        publicId: null,
+        chatId: expect.any(String),
+      },
     ]);
     // and a new game can start
     lobby.start(ana);
@@ -403,5 +451,95 @@ describe('rounds and the end of the match', () => {
     lobby.dispose();
     vi.advanceTimersByTime(120_000);
     expect(lobby.stateFor(ana).game!.round.turn).toBe(turn);
+  });
+});
+
+describe('the chat', () => {
+  function chatLobby() {
+    let clock = 1_000;
+    const lobby = new Lobby({
+      code: 'CHATS',
+      rng: seededRng(5),
+      scheduler: { now: () => clock, set: () => null, clear: () => undefined },
+      newId: (() => {
+        let n = 0;
+        return () => `secret-id-number-${++n}`;
+      })(),
+      onChange: () => undefined,
+    });
+    return { lobby, tick: (ms: number) => (clock += ms) };
+  }
+
+  it('every player has a chat id that is not their key to the lobby', () => {
+    const { lobby } = chatLobby();
+    const ana = lobby.join('Ana');
+    const ben = lobby.join('Ben');
+    const members = lobby.stateFor(ana).members;
+    expect(new Set(members.map((m) => m.chatId)).size).toBe(2);
+    for (const m of members) expect([ana, ben]).not.toContain(m.chatId);
+  });
+
+  it('keeps what was said, tidied up, with who said it and from which seat', () => {
+    const { lobby } = chatLobby();
+    const ana = lobby.join('Ana');
+    const ben = lobby.join('Ben');
+    lobby.say(ana, lobby.checkSay(ana, '  Good   luck\n everyone  '));
+    lobby.say(ben, lobby.checkSay(ben, '👍'));
+    const chatIds = lobby.stateFor(ana).members.map((m) => m.chatId);
+    expect(lobby.chatHistory()).toEqual([
+      { id: 1, from: chatIds[0], seat: 0, name: 'Ana', text: 'Good luck everyone', at: 1_000 },
+      { id: 2, from: chatIds[1], seat: 1, name: 'Ben', text: '👍', at: 1_000 },
+    ]);
+  });
+
+  it('refuses empty and over-long lines, and players who are not here', () => {
+    const { lobby } = chatLobby();
+    const ana = lobby.join('Ana');
+    expect(() => lobby.checkSay(ana, '   ')).toThrow('Type something first');
+    expect(() => lobby.checkSay(ana, 42)).toThrow('Type something first');
+    expect(() => lobby.checkSay(ana, 'x'.repeat(201))).toThrow(/under 200/);
+    expect(lobby.checkSay(ana, '😂'.repeat(200))).toHaveLength(400);
+    expect(() => lobby.checkSay('stranger', 'hi')).toThrow(/not in this lobby/);
+  });
+
+  it('lets a player say 5 lines in 10 seconds, then asks them to slow down', () => {
+    const { lobby, tick } = chatLobby();
+    const ana = lobby.join('Ana');
+    for (let i = 0; i < 5; i++) lobby.say(ana, lobby.checkSay(ana, `line ${i}`));
+    expect(() => lobby.checkSay(ana, 'one more')).toThrow('Slow down a little');
+    tick(10_001);
+    expect(lobby.checkSay(ana, 'one more')).toBe('one more');
+  });
+
+  it('keeps the last 50 lines', () => {
+    const { lobby, tick } = chatLobby();
+    const ana = lobby.join('Ana');
+    for (let i = 0; i < 60; i++) {
+      lobby.say(ana, `line ${i}`);
+      tick(3_000);
+    }
+    const history = lobby.chatHistory();
+    expect(history).toHaveLength(50);
+    expect(history[0]!.text).toBe('line 10');
+    expect(history.at(-1)!.id).toBe(60);
+  });
+
+  it('tells a report who a chat id belongs to, and the last 20 things they said', () => {
+    const { lobby, tick } = chatLobby();
+    const account = { userId: 'user-ben', username: 'BenM', publicId: '22222222', avatarUrl: null };
+    const ana = lobby.join('Ana');
+    const ben = lobby.join('', account);
+    for (let i = 0; i < 25; i++) {
+      lobby.say(ben, `ben ${i}`);
+      lobby.say(ana, `ana ${i}`);
+      tick(3_000);
+    }
+    const [anaChat, benChat] = lobby.stateFor(ana).members.map((m) => m.chatId);
+    const author = lobby.chatAuthor(benChat!);
+    expect(author.account).toEqual(account);
+    expect(author.said).toHaveLength(20);
+    expect(author.said[0]).toBe('ben 5');
+    expect(lobby.chatAuthor(anaChat!).account).toBeNull();
+    expect(() => lobby.chatAuthor('nobody')).toThrow(/not at this table/);
   });
 });

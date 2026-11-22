@@ -41,7 +41,9 @@ function memoryStore(initial: Record<string, string> = {}): SessionStore & { dat
 const lobbyState = (over: Partial<LobbyState> = {}): LobbyState => ({
   code: 'ABCDE',
   you: 0,
-  members: [{ name: 'Ana', bot: false, connected: true, host: true, avatarUrl: null, publicId: null }],
+  members: [
+    { name: 'Ana', bot: false, connected: true, host: true, avatarUrl: null, publicId: null, chatId: 'chat-ana' },
+  ],
   settings: { aceHigh: true, rounds: 1, fillWithBots: false },
   game: null,
   turnEndsAt: null,
@@ -135,6 +137,50 @@ describe('the connection to the game server', () => {
     ]);
     socket.sent.forEach((s) => s.reply({ ok: true }));
     expect(await Promise.all(requests)).toEqual([{ ok: true }, { ok: true }, { ok: true }, { ok: true }]);
+  });
+
+  it('keeps the chat at the table: history on (re)joining, new lines as they come, and none after leaving', async () => {
+    const { socket, connection } = setup({}, () => Promise.resolve('token-1'));
+    const joined = connection.join('ABCDE', 'Ana');
+    socket.fire('connect');
+    await settle();
+    socket.last('join').reply({ ok: true, code: 'ABCDE', memberId: 'key-1' });
+    await joined;
+    const line = (id: number, text: string) => ({ id, from: 'chat-ben', seat: 1, name: 'Ben', text, at: id });
+    // what was said before you came in is history: it does not pop up over the seats
+    socket.fire('chat', { lines: [line(1, 'hi'), line(2, 'hello')], reset: true });
+    expect(connection.get().chat.map((l) => [l.text, l.fresh])).toEqual([
+      ['hi', false],
+      ['hello', false],
+    ]);
+    socket.fire('chat', { lines: [line(3, '🔥')] });
+    socket.fire('chat', { lines: [line(3, '🔥')] });
+    expect(connection.get().chat.map((l) => [l.text, l.fresh])).toEqual([
+      ['hi', false],
+      ['hello', false],
+      ['🔥', true],
+    ]);
+    // a long chat keeps the newest 50
+    socket.fire('chat', { lines: Array.from({ length: 60 }, (_, i) => line(10 + i, `line ${i}`)) });
+    expect(connection.get().chat).toHaveLength(50);
+    expect(connection.get().chat.at(-1)?.text).toBe('line 59');
+
+    void connection.say('Good luck');
+    expect(socket.last('say').payload).toEqual({ text: 'Good luck' });
+    void connection.report('chat-ben', 'spam', 'links', true);
+    await settle();
+    expect(socket.last('report').payload).toEqual({
+      chatId: 'chat-ben',
+      why: 'spam',
+      note: 'links',
+      alsoBlock: true,
+      token: 'token-1',
+    });
+
+    const left = connection.leave();
+    socket.last('leave').reply({ ok: true });
+    await left;
+    expect(connection.get().chat).toEqual([]);
   });
 
   it('takes the seat again by itself after a dropped connection', async () => {

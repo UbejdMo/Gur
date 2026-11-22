@@ -23,7 +23,7 @@ import {
   turnSeconds,
 } from '@gur/engine';
 import type { Game, Rng } from '@gur/engine';
-import type { GameAction, LobbySettings, LobbyState } from './protocol';
+import type { ChatLine, GameAction, LobbySettings, LobbyState } from './protocol';
 
 /** Something a player asked for that the lobby refuses. The message is shown to that player. */
 export class LobbyError extends Error {
@@ -63,6 +63,10 @@ export interface LobbyConfig {
 }
 
 export const MAX_PLAYERS = 4;
+/** The chat: the longest line, how many lines are kept, and how many a player may say in 10 seconds. */
+export const MAX_CHAT_LENGTH = 200;
+export const CHAT_KEPT = 50;
+export const CHAT_PER_10S = 5;
 export const MAX_NAME_LENGTH = 16;
 export const DEFAULT_SETTINGS: LobbySettings = { aceHigh: true, rounds: 1, fillWithBots: false };
 
@@ -84,6 +88,8 @@ interface Member {
   connected: boolean;
   /** Walked away from a game in progress. Their seat stays and the game plays for them. */
   left: boolean;
+  /** Names them in the chat; not secret. */
+  chatId: string;
 }
 
 export class Lobby {
@@ -100,6 +106,11 @@ export class Lobby {
   private nextRoundAt: number | null = null;
   /** When the last connected player went away; null while somebody is here. */
   private emptySince: number | null;
+  /** The chat, newest last, at most CHAT_KEPT lines. */
+  private chat: ChatLine[] = [];
+  private chatCount = 0;
+  /** When each player last spoke, for the limit on how fast they may. */
+  private spoke = new Map<string, number[]>();
 
   private readonly botDelayMs: readonly [number, number];
   private readonly awayDelayMs: number;
@@ -129,6 +140,7 @@ export class Lobby {
       bot: false,
       connected: true,
       left: false,
+      chatId: this.config.newId(),
     };
     this.members.push(member);
     this.hostId ??= member.id;
@@ -233,6 +245,7 @@ export class Lobby {
           bot: true,
           connected: true,
           left: false,
+          chatId: this.config.newId(),
         });
       }
     }
@@ -289,12 +302,68 @@ export class Lobby {
         host: m.id === this.hostId,
         avatarUrl: m.account?.avatarUrl ?? null,
         publicId: m.account?.publicId ?? null,
+        chatId: m.chatId,
       })),
       settings: { ...this.settings },
       game: this.game ? playerView(this.game, you) : null,
       turnEndsAt: this.turnEndsAt,
       nextRoundAt: this.nextRoundAt,
       now: this.config.scheduler.now(),
+    };
+  }
+
+  // ---------- the chat ----------
+
+  /**
+   * Checks what a player wants to say, and returns it tidied up: one line, no more than
+   * MAX_CHAT_LENGTH characters, at most CHAT_PER_10S lines in 10 seconds. Throws LobbyError.
+   */
+  checkSay(memberId: string, raw: unknown): string {
+    this.member(memberId);
+    const text = typeof raw === 'string' ? raw.replace(/\s+/g, ' ').trim() : '';
+    if (!text) throw new LobbyError('Type something first');
+    if ([...text].length > MAX_CHAT_LENGTH) throw new LobbyError(`Keep it under ${MAX_CHAT_LENGTH} characters`);
+    const now = this.config.scheduler.now();
+    const recent = (this.spoke.get(memberId) ?? []).filter((at) => at > now - 10_000);
+    if (recent.length >= CHAT_PER_10S) throw new LobbyError('Slow down a little');
+    return text;
+  }
+
+  /** Adds a line to the chat (checked with checkSay first) and returns it. */
+  say(memberId: string, text: string): ChatLine {
+    const member = this.member(memberId);
+    const now = this.config.scheduler.now();
+    this.spoke.set(memberId, [...(this.spoke.get(memberId) ?? []).filter((at) => at > now - 10_000), now]);
+    const line: ChatLine = {
+      id: ++this.chatCount,
+      from: member.chatId,
+      seat: this.members.indexOf(member),
+      name: member.name,
+      text,
+      at: now,
+    };
+    this.chat = [...this.chat, line].slice(-CHAT_KEPT);
+    return line;
+  }
+
+  /** The chat so far, oldest first. */
+  chatHistory(): ChatLine[] {
+    return [...this.chat];
+  }
+
+  /**
+   * Who a chat id belongs to, for a report: their account (null for a guest or a bot), and
+   * the last 20 things they said here.
+   */
+  chatAuthor(chatId: string): { account: SignedInPlayer | null; said: string[] } {
+    const member = this.members.find((m) => m.chatId === chatId);
+    if (!member) throw new LobbyError('That player is not at this table');
+    return {
+      account: member.account ?? null,
+      said: this.chat
+        .filter((l) => l.from === chatId)
+        .slice(-20)
+        .map((l) => l.text),
     };
   }
 

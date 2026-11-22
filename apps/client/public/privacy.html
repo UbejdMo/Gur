@@ -15,7 +15,7 @@
     <main>
       <a class="back" href="./">&larr; Gur</a>
       <h1>Privacy policy</h1>
-      <p class="muted">Last updated: 21 November 2026</p>
+      <p class="muted">Last updated: 22 November 2026</p>
 
       <p>
         Gur is a free tile rummy game, played the way it is in Kosovo. It is made and run by Ubejd Morina ("I", "me").
@@ -60,8 +60,8 @@
         <li>The players you blocked. Only you see this; the blocked player is not told.</li>
         <li>
           Reports: when you report a player, the reason, anything you add, and a copy of the last 20 messages between
-          the two of you, so it can be checked what happened. Only I see reports. The reported player is not told who
-          reported them.
+          the two of you (or, for a report from the chat at a table, of the last 20 lines they said there), so it can be
+          checked what happened. Only I see reports. The reported player is not told who reported them.
         </li>
       </ul>
       <p>Gur never sees your Google password, your contacts or anything else in your Google account.</p>
@@ -70,6 +70,12 @@
         <li>
           A game with friends runs on the game server: who sits in the lobby, the tiles and the moves. This is held only
           while the game lasts. It is not saved, and it is gone when the lobby closes.
+        </li>
+        <li>
+          The chat at a table: what the players in a lobby say to each other, in the waiting room and during the game.
+          The game server holds the last 50 lines while the lobby is open, so that a player who comes back sees them. It
+          is not saved, and it is gone when the lobby closes, unless a player reports another (see above). Who you muted
+          is remembered only on your device, while the game is open.
         </li>
         <li>A game against bots runs on your own device and is sent nowhere.</li>
         <li>
@@ -105,8 +111,10 @@
         <li>To deliver your messages to your friends.</li>
         <li>To keep usernames unique, and to deal with cheating or abuse.</li>
         <li>
-          To keep messages decent: words on a list of offensive words are replaced by stars before a message is kept. No
-          person reads your messages unless a player reports them.
+          To keep messages and the chat at a table decent: words on a list of offensive words are replaced by stars
+          before a message is kept or a line is shown. To do that, each line said at a table is passed through the
+          accounts database (Supabase) once, without being kept there. No person reads your messages or the chat unless
+          a player reports them.
         </li>
       </ul>
       <p>

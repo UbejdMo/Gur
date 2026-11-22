@@ -66,3 +66,45 @@ export function supabaseFriendsCheck(url: string, key: string, fetcher: typeof f
     return Array.isArray(rows) && rows.some((row) => row.id === userId && row.state === 'friend');
   };
 }
+
+/** What the game server asks of the database for the chat at a table. */
+export interface TableTools {
+  starOut: (text: string) => Promise<string>;
+  reportPlayer: (token: string, userId: string, why: string, note: string, said: string[]) => Promise<string>;
+  blockPlayer: (token: string, userId: string) => Promise<void>;
+}
+
+/**
+ * The database's functions for the chat at a table: starring out words on the owner's list
+ * (anyone may ask, so guests' lines are cleaned too), and reporting and blocking, which act for
+ * the player whose token is given.
+ */
+export function supabaseTableTools(url: string, key: string, fetcher: typeof fetch = fetch): TableTools {
+  const base = url.replace(/\/+$/, '');
+  const call = async (name: string, args: object, token?: string): Promise<unknown> => {
+    const answer = await fetcher(`${base}/rest/v1/rpc/${name}`, {
+      method: 'POST',
+      headers: {
+        apikey: key,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(args),
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!answer.ok) throw new Error(`${name} answered ${answer.status}`);
+    const text = await answer.text();
+    return text ? (JSON.parse(text) as unknown) : null;
+  };
+  return {
+    starOut: async (text) => {
+      const starred = await call('star_out', { message: text });
+      return typeof starred === 'string' ? starred : text;
+    },
+    reportPlayer: async (token, userId, why, note, said) =>
+      String(await call('report_table_player', { who: userId, why, note: note || null, said }, token)),
+    blockPlayer: async (token, userId) => {
+      await call('block_player', { who: userId }, token);
+    },
+  };
+}

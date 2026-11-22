@@ -11,6 +11,7 @@
 import { io } from 'socket.io-client';
 import type {
   Ack,
+  ChatLine,
   ClientToServerEvents,
   GameAction,
   Invite,
@@ -32,7 +33,14 @@ export type OnlineSnapshot = {
   clockOffset: number;
   /** Why you are no longer in your lobby, when the server said so. */
   notice: string | null;
+  /** The chat at your table, oldest first. */
+  chat: readonly TableLine[];
 };
+
+/** A chat line as the app keeps it: `fresh` lines were said while you were there (they pop up over the seat). */
+export type TableLine = ChatLine & { fresh: boolean };
+
+const CHAT_KEPT = 50;
 
 type Session = { code: string; memberId: string };
 
@@ -83,7 +91,7 @@ const NO_ANSWER = 'The server did not answer. Check your connection and try agai
 export class Connection {
   private socket: SocketLike | null = null;
   private session: Session | null = null;
-  private snapshot: OnlineSnapshot = { status: 'idle', lobby: null, clockOffset: 0, notice: null };
+  private snapshot: OnlineSnapshot = { status: 'idle', lobby: null, clockOffset: 0, notice: null, chat: [] };
   private readonly listeners = new Set<() => void>();
   private readonly inviteListeners = new Set<(invite: Invite) => void>();
   private readonly newsListeners = new Set<(news: News) => void>();
@@ -196,6 +204,16 @@ export class Connection {
     return () => this.inviteListeners.delete(listener);
   }
 
+  /** Says something to everybody at your table: up to 200 characters, or one emoji. */
+  async say(text: string): Promise<Ack> {
+    return this.request('say', { text });
+  }
+
+  /** Reports a player at your table (their chat id). You need to be signed in, and so do they. */
+  async report(chatId: string, why: string, note: string, alsoBlock: boolean): Promise<Ack> {
+    return this.request('report', await this.signed({ chatId, why, note, alsoBlock }));
+  }
+
   /** Calls `listener` whenever a conversation has something new. Returns a way to stop. */
   onNews(listener: (news: News) => void): () => void {
     this.newsListeners.add(listener);
@@ -242,6 +260,13 @@ export class Connection {
     });
     socket.on('invited', (invite: Invite) => {
       for (const listener of [...this.inviteListeners]) listener(invite);
+    });
+    socket.on('chat', (update: { lines: ChatLine[]; reset?: boolean }) => {
+      const incoming = (update.lines ?? []).map((line) => ({ ...line, fresh: !update.reset }));
+      const known = update.reset ? [] : this.snapshot.chat;
+      const byId = new Map<number, TableLine>();
+      for (const line of [...known, ...incoming]) if (!byId.has(line.id) || !update.reset) byId.set(line.id, line);
+      this.update({ chat: [...byId.values()].sort((a, b) => a.id - b.id).slice(-CHAT_KEPT) });
     });
     socket.on('news', (news: News) => {
       for (const listener of [...this.newsListeners]) listener(news);
@@ -297,7 +322,7 @@ export class Connection {
   private forget(notice: string | null): void {
     this.session = null;
     this.store.set(SESSION_KEY, null);
-    this.update({ lobby: null, notice });
+    this.update({ lobby: null, notice, chat: [] });
   }
 
   private readSession(): Session | null {

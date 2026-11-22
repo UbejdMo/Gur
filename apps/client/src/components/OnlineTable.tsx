@@ -3,7 +3,9 @@ import type { PlayerView } from '@gur/engine';
 import type { LobbyState } from '@gur/server/protocol';
 import { GameTable } from './GameTable';
 import { ResultsOverlay } from './ResultsOverlay';
-import type { Connection, OnlineStatus } from '@/online/connection';
+import { TableChat } from './TableChat';
+import type { Connection, OnlineStatus, TableLine } from '@/online/connection';
+import { useTableChat } from '@/online/tableChat';
 import { useCountdown, useOnlineTable } from '@/online/useOnlineTable';
 import { colors } from '@/theme';
 
@@ -14,14 +16,17 @@ type Props = {
   status: OnlineStatus;
   /** Leave the lobby and go back to the menu. */
   onLeave: () => void;
+  /** The chat at the table. */
+  chat?: readonly TableLine[];
 };
 
 /** A game with friends: the same table as against the bots, run by the server. */
-export function OnlineTable({ lobby, connection, clockOffset, status, onLeave }: Props) {
+export function OnlineTable({ lobby, connection, clockOffset, status, onLeave, chat = [] }: Props) {
   const table = useOnlineTable(lobby, connection, clockOffset);
   const { view } = table;
   const host = lobby.members[lobby.you]!.host;
   const hostName = lobby.members.find((m) => m.host)?.name ?? 'the host';
+  const { speech } = useTableChat(lobby, chat);
   const nextIn = useCountdown(view.status === 'roundOver' ? lobby.nextRoundAt : null, clockOffset);
 
   const over = view.status !== 'playing';
@@ -44,6 +49,15 @@ export function OnlineTable({ lobby, connection, clockOffset, status, onLeave }:
       <GameTable
         table={table}
         onLeave={onLeave}
+        speech={speech}
+        chatButton={
+          <TableChat
+            lobby={lobby}
+            chat={chat}
+            onSay={(text) => connection.say(text)}
+            onReport={(chatId, why, note, alsoBlock) => connection.report(chatId, why, note, alsoBlock)}
+          />
+        }
         leaveNote="The game goes on without you: your turns are played for you. You cannot come back to this game."
         overlay={
           over && (

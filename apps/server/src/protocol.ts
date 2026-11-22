@@ -17,6 +17,21 @@ export interface LobbySettings {
   fillWithBots: boolean;
 }
 
+/** One line of the chat at a table, kept by the server while the lobby lasts and nowhere else. */
+export interface ChatLine {
+  /** Counts up within the lobby. */
+  id: number;
+  /** Who said it: their `chatId`, so a player can be muted however the seats change. */
+  from: string;
+  /** Their seat when they said it. */
+  seat: number;
+  name: string;
+  /** Up to 200 characters; an emoji on its own is a reaction. */
+  text: string;
+  /** When (server clock, milliseconds). */
+  at: number;
+}
+
 export interface MemberView {
   name: string;
   bot: boolean;
@@ -27,6 +42,8 @@ export interface MemberView {
   /** Signed-in players only: their picture and the eight-digit id friends can add them by. */
   avatarUrl: string | null;
   publicId: string | null;
+  /** Names the player in the chat (not secret; it is not their key to the lobby). */
+  chatId: string;
 }
 
 /** Everything one player sees: the lobby, and their view of the game once it has started. */
@@ -99,6 +116,16 @@ export interface ClientToServerEvents {
    * once. The message itself goes to the database, not through here. `token` is yours.
    */
   poke: (request: { to: string; token?: string | null }, reply: Reply) => void;
+  /** Says something to the table (or the waiting room): up to 200 characters, or one emoji. */
+  say: (request: { text: string }, reply: Reply) => void;
+  /**
+   * Reports a player at your table (their `chatId`) to the game's owner. Both of you must have
+   * an account. What they said at the table goes with the report. `token` is yours.
+   */
+  report: (
+    request: { chatId: string; why: string; note?: string; alsoBlock?: boolean; token?: string | null },
+    reply: Reply,
+  ) => void;
 }
 
 /** An invitation into a friend's lobby. */
@@ -119,4 +146,6 @@ export interface ServerToClientEvents {
   state: (state: LobbyState) => void;
   invited: (invite: Invite) => void;
   news: (news: News) => void;
+  /** New chat lines at your table; `reset` means these are all of them (on joining). */
+  chat: (update: { lines: ChatLine[]; reset?: boolean }) => void;
 }

@@ -1,4 +1,5 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
+import { SpeechBubble } from './SpeechBubble';
 import { colors } from '@/theme';
 
 type Props = {
@@ -19,6 +20,10 @@ type Props = {
   small?: boolean;
   /** One line only, for a phone held sideways inside a browser, where height is very short. */
   tiny?: boolean;
+  /** What they just said at the table, popping up over the panel for a few seconds. */
+  speech?: { id: number; text: string } | null;
+  /** The bubble goes below the panel (players along the top of the screen). */
+  speechBelow?: boolean;
 };
 
 const AVATAR_COLORS = ['#2F80ED', '#9B51E0', '#EB5757', '#27AE60'];
@@ -48,6 +53,8 @@ export function PlayerPanel({
   compact,
   small,
   tiny,
+  speech,
+  speechBelow,
 }: Props) {
   const color = avatarColor(seat);
   return (
@@ -107,6 +114,7 @@ export function PlayerPanel({
           </View>
         )}
       </View>
+      {speech && <SpeechBubble key={speech.id} text={speech.text} below={speechBelow} />}
     </View>
   );
 }
