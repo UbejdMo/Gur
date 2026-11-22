@@ -8,6 +8,7 @@ import { LobbyRoom } from '@/components/LobbyRoom';
 import { OnlineTable } from '@/components/OnlineTable';
 import { ResultsOverlay } from '@/components/ResultsOverlay';
 import type { Connection } from '@/online/connection';
+import type * as ReactNative from 'react-native';
 import { FILLER, NORMAL, t, ts } from '../test-utils/deal';
 
 jest.mock('expo-router', () => ({
@@ -387,5 +388,36 @@ describe('results of a match of several rounds', () => {
     }
     expect(screen.getByTestId('results-note')).toHaveTextContent('Waiting for Ana');
     expect(screen.getByText('Ana (you)', { exact: false })).toBeOnTheScreen();
+  });
+
+  it('on a phone on its side, puts points and hand side by side, with the buttons outside the part that scrolls', async () => {
+    const rn = jest.requireActual<typeof ReactNative>('react-native');
+    const size = jest
+      .spyOn(rn, 'useWindowDimensions')
+      .mockReturnValue({ width: 844, height: 390, scale: 3, fontScale: 1 });
+    try {
+      let g = game(1, 3);
+      while (g.status === 'playing') g = timeoutMove(g);
+      const next = jest.fn();
+      await render(
+        <ResultsOverlay
+          view={playerView(g, 0)}
+          names={NAMES}
+          primary={{ label: 'Next round', onPress: next }}
+          note="The next round starts in 9 seconds"
+          onMenu={jest.fn()}
+        />,
+      );
+      const body = screen.getByTestId('results-body');
+      expect(body.props.contentContainerStyle).toEqual(
+        expect.arrayContaining([expect.objectContaining({ flexDirection: 'row' })]),
+      );
+      // however much there is to read, the buttons are never scrolled away
+      expect(within(body).queryByRole('button')).toBeNull();
+      await fireEvent.press(screen.getByRole('button', { name: 'Next round' }));
+      expect(next).toHaveBeenCalled();
+    } finally {
+      size.mockRestore();
+    }
   });
 });
