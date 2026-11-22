@@ -213,6 +213,29 @@ const server = createServer((request, response) => {
       }
     }
 
+    // The chat at a table (0005_table_chat.sql): anyone may have words starred out; reports
+    // from a table carry what the player said there.
+    if (url.pathname === '/rest/v1/rpc/star_out') {
+      const { message } = await bodyOf(request);
+      return send(response, 200, String(message ?? '').replace(/\bdarn\b/gi, '****'));
+    }
+    if (url.pathname === '/rest/v1/rpc/report_table_player') {
+      const me = userOf(request);
+      if (!me) return send(response, 401, { code: '42501', message: 'permission denied' });
+      const args = await bodyOf(request);
+      const reasons = ['harassment', 'hate', 'spam', 'name_or_picture', 'cheating', 'other'];
+      if (!reasons.includes(args.why)) return send(response, 200, 'invalid');
+      if (!profiles.has(args.who)) return send(response, 200, 'not_found');
+      reports.push({
+        reporter: me,
+        reported: args.who,
+        reason: args.why,
+        details: args.note ?? null,
+        table_chat: args.said,
+      });
+      return send(response, 200, 'sent');
+    }
+
     // Messages, blocking and reporting, in short.
     const messageCalls = [
       'send_message',

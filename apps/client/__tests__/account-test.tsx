@@ -435,6 +435,7 @@ describe('inviting friends from the lobby', () => {
       connected: true,
       host: i === 0,
       avatarUrl: null,
+      chatId: `chat-${name}`,
       publicId: name === 'Ana' ? '48213377' : name === 'Ben' ? friend('Ben', 'friend').publicId : null,
     }));
   const room = (...names: string[]) => ({
@@ -618,6 +619,7 @@ describe('pictures', () => {
       connected: true,
       host: name === 'Ana',
       avatarUrl,
+      chatId: `chat-${name}`,
       publicId: avatarUrl ? '48213377' : null,
     });
     await render(

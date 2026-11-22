@@ -516,3 +516,66 @@ describe('messages, blocking and reporting', () => {
     expect((await as(IVA, 'select * from public.my_blocks()')).rows).toEqual([]);
   });
 });
+
+describe('the chat at a table', () => {
+  const KAI = '00000000-0000-0000-0000-0000000000a3';
+  const LEA = '00000000-0000-0000-0000-0000000000b3';
+  const star = async (who: string | null, text: string) =>
+    ((await as(who, 'select public.star_out($1) as s', [text])).rows[0] as { s: string }).s;
+
+  beforeAll(async () => {
+    await signUp(KAI, { name: 'Kai' });
+    await signUp(LEA, { name: 'Lea' });
+  });
+
+  it('stars out the blocked words for anybody, guests included, as whole words in any case', async () => {
+    await db.query("insert into public.blocked_words (word) values ('darn'), ('silly goose')");
+    expect(await star(null, 'Darn, a SILLY goose! darnation')).toBe('****, a ***********! darnation');
+    expect(await star(KAI, 'all fine')).toBe('all fine');
+    expect(await star(null, 'x'.repeat(1500))).toHaveLength(1000);
+    await db.query('delete from public.blocked_words');
+    expect(await star(null, 'darn')).toBe('darn');
+  });
+
+  it('a report from the table keeps what the player said there, at most 20 short lines', async () => {
+    const said = Array.from({ length: 25 }, (_, i) => (i === 24 ? 'y'.repeat(300) : `line ${i}`));
+    const status = (
+      await as(KAI, 'select public.report_table_player($1, $2, $3, $4) as s', [
+        LEA,
+        'hate',
+        'At the table',
+        JSON.stringify(said),
+      ])
+    ).rows[0] as { s: string };
+    expect(status.s).toBe('sent');
+    const row = (
+      await db.query<{ reason: string; details: string; table_chat: string[]; recent_messages: unknown[] }>(
+        "select * from public.reports where reported_username = 'Lea'",
+      )
+    ).rows[0]!;
+    expect(row).toMatchObject({ reason: 'hate', details: 'At the table', recent_messages: [] });
+    expect(row.table_chat).toHaveLength(20);
+    expect(row.table_chat).toContain('line 5');
+    expect(row.table_chat).not.toContain('line 4');
+    expect(Math.max(...row.table_chat.map((l) => l.length))).toBe(200);
+  });
+
+  it('refuses what report_player refuses, and keeps nothing but a list of lines', async () => {
+    const report = async (who: string, why: string, said: unknown) =>
+      (
+        (await as(KAI, 'select public.report_table_player($1, $2, null, $3) as s', [who, why, JSON.stringify(said)]))
+          .rows[0] as { s: string }
+      ).s;
+    expect(await report(LEA, 'boring', [])).toBe('invalid');
+    expect(await report(KAI, 'spam', [])).toBe('yourself');
+    expect(await report('00000000-0000-0000-0000-00000000ffff', 'spam', [])).toBe('not_found');
+    expect(await report(LEA, 'spam', { not: 'a list' })).toBe('sent');
+    const kept = (
+      await db.query<{ table_chat: unknown }>("select table_chat from public.reports where reason = 'spam'")
+    ).rows;
+    expect(kept.at(-1)!.table_chat).toEqual([]);
+    await expect(as(null, `select public.report_table_player('${LEA}', 'spam', null, '[]')`)).rejects.toThrow(
+      /permission denied/,
+    );
+  });
+});

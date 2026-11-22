@@ -26,6 +26,10 @@ type Props = {
   onLeave?: () => void;
   /** What leaving means, said when the player is asked to confirm. */
   leaveNote?: string;
+  /** For each seat, what that player just said (online games): it pops up over their panel. */
+  speech?: readonly ({ id: number; text: string } | null)[];
+  /** The chat button (online games), next to the leave button. */
+  chatButton?: ReactNode;
 };
 
 /**
@@ -47,7 +51,7 @@ type Props = {
  * own press leaves the web responder stuck, which stops the next drag. They ignore presses
  * that aren't allowed instead, and still report "disabled" to screen readers.
  */
-export function GameTable({ table: p, overlay, onLeave, leaveNote }: Props) {
+export function GameTable({ table: p, overlay, onLeave, leaveNote, speech, chatButton }: Props) {
   const { view, names } = p;
   const { round } = view;
   const YOU = view.seat;
@@ -125,6 +129,9 @@ export function GameTable({ table: p, overlay, onLeave, leaveNote }: Props) {
         compact={compact}
         small={wide && !short}
         tiny={wide && short}
+        speech={speech?.[seat] ?? null}
+        // Players along the top of the screen get theirs below, so it stays on screen.
+        speechBelow={seat !== YOU && (!wide || seat === around.across)}
       />
     );
 
@@ -355,9 +362,12 @@ export function GameTable({ table: p, overlay, onLeave, leaveNote }: Props) {
             </View>
           </View>
           {/* In the empty corners of the felt: leaving, and full screen for browsers that can. */}
-          {leaveButton && (
-            <View style={[styles.corner, { top: pad + (tight ? 8 : 16), left: pad + (tight ? 8 : 16) }]}>
+          {(leaveButton || chatButton) && (
+            <View
+              style={[styles.corner, styles.cornerRow, { top: pad + (tight ? 8 : 16), left: pad + (tight ? 8 : 16) }]}
+            >
               {leaveButton}
+              {chatButton}
             </View>
           )}
           <View style={[styles.corner, { top: pad + (tight ? 8 : 16), right: pad + (tight ? 8 : 16) }]}>
@@ -367,7 +377,12 @@ export function GameTable({ table: p, overlay, onLeave, leaveNote }: Props) {
       ) : (
         <View style={styles.narrowContent}>
           <View style={styles.panelRow}>
-            {leaveButton}
+            {(leaveButton || chatButton) && (
+              <View style={styles.cornerColumn}>
+                {leaveButton}
+                {chatButton}
+              </View>
+            )}
             {panel(around.left, true)}
             {panel(around.across, true)}
             {panel(around.right, true)}
@@ -416,6 +431,8 @@ const styles = StyleSheet.create({
   wideContent: { flex: 1, gap: 12, width: '100%', maxWidth: 1280, alignSelf: 'center' },
   wideShort: { gap: 6 },
   corner: { position: 'absolute' },
+  cornerRow: { flexDirection: 'row', gap: 8 },
+  cornerColumn: { gap: 6 },
   leave: {
     alignSelf: 'flex-start',
     padding: 7,
@@ -470,7 +487,7 @@ const styles = StyleSheet.create({
   rackSideFill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, gap: 6, overflow: 'hidden' },
   rackSideEnd: { justifyContent: 'center' },
   narrowContent: { flex: 1, padding: 10, gap: 10 },
-  panelRow: { flexDirection: 'row', gap: 8 },
+  panelRow: { flexDirection: 'row', gap: 8, zIndex: 5 },
   youCell: { flex: 1 },
   felt: {
     alignItems: 'center',

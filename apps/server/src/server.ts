@@ -40,6 +40,12 @@ export interface GameServerConfig extends Omit<LobbiesConfig, 'onChange'> {
    * friends. Without it nobody can be invited.
    */
   areFriends?: (token: string, userId: string) => Promise<boolean>;
+  /** Stars out the words on the owner's list (Supabase); without it, chat is passed on as typed. */
+  starOut?: (text: string) => Promise<string>;
+  /** Files a report about a player at a table, with the reporter's token. Answers like `report_table_player`. */
+  reportPlayer?: (token: string, userId: string, why: string, note: string, said: string[]) => Promise<string>;
+  /** Blocks a player, with the blocker's token. */
+  blockPlayer?: (token: string, userId: string) => Promise<void>;
   /** How long an invitation lasts, in milliseconds. */
   inviteMs?: number;
   /** The clock, for invitations (tests set their own). */
@@ -144,6 +150,21 @@ export function createGameServer(config: GameServerConfig = {}): GameServer {
     void socket.join(room(memberId));
     lobby.setConnected(memberId, true);
     socket.emit('state', lobby.stateFor(memberId));
+    socket.emit('chat', { lines: lobby.chatHistory(), reset: true });
+  };
+
+  /** Stars out bad words, if the owner's list can be reached in time; otherwise the text as it is. */
+  const clean = async (text: string): Promise<string> => {
+    if (!config.starOut) return text;
+    try {
+      const starred = await Promise.race([
+        config.starOut(text),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+      ]);
+      return typeof starred === 'string' && starred ? starred : text;
+    } catch {
+      return text;
+    }
   };
 
   io.on('connection', (socket: GameSocket) => {
@@ -222,6 +243,46 @@ export function createGameServer(config: GameServerConfig = {}): GameServer {
         if (socket.data.userId) void socket.leave(userRoom(socket.data.userId));
         socket.data.userId = player?.userId;
         if (player) void socket.join(userRoom(player.userId));
+      }),
+    );
+
+    socket.on('say', (request, reply) =>
+      answer(reply, async () => {
+        const { lobby, memberId } = seatOf(socket);
+        const text = await clean(lobby.checkSay(memberId, request?.text));
+        // Cleaning took a moment: the lobby or the player may be gone.
+        const { lobby: still, memberId: same } = seatOf(socket);
+        if (still !== lobby || same !== memberId || !lobby.has(memberId))
+          throw new LobbyError('You are not in a lobby');
+        const line = lobby.say(memberId, text);
+        for (const id of lobby.memberIds()) io.to(room(id)).emit('chat', { lines: [line] });
+      }),
+    );
+
+    socket.on('report', (request, reply) =>
+      answer(reply, async () => {
+        const { lobby } = seatOf(socket);
+        const reporter = await identify(request?.token);
+        if (!reporter) throw new LobbyError('Sign in to report a player. You can mute them instead');
+        const target = lobby.chatAuthor(String(request?.chatId ?? ''));
+        if (!target.account)
+          throw new LobbyError('Only players who signed in can be reported. You can mute them instead');
+        if (target.account.userId === reporter.userId) throw new LobbyError('You cannot report yourself');
+        if (!config.reportPlayer) throw new LobbyError('Reporting is not available right now');
+        const note = typeof request?.note === 'string' ? request.note.trim().slice(0, 500) : '';
+        const status = await config.reportPlayer(
+          request.token as string,
+          target.account.userId,
+          String(request?.why ?? ''),
+          note,
+          target.said,
+        );
+        if (status === 'invalid') throw new LobbyError('Choose a reason, and keep the note under 500 characters');
+        if (status === 'too_many')
+          throw new LobbyError('You have sent a lot of reports today. Try again tomorrow, or write to us');
+        if (status !== 'sent') throw new LobbyError('The report could not be sent. Please try again');
+        if (request?.alsoBlock && config.blockPlayer)
+          await config.blockPlayer(request.token as string, target.account.userId);
       }),
     );
 

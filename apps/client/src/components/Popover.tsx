@@ -23,7 +23,11 @@ export function Popover({ title, open, onClose, children, place = 'topRight', te
   const screen = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const width = Math.min(400, screen.width - 24);
-  const top = place === 'topRight' ? insets.top + 64 : Math.max(insets.top + 24, screen.height * 0.12);
+  // On a low screen (a phone on its side) the panel starts near the top, to have room.
+  const top =
+    place === 'topRight'
+      ? insets.top + (screen.height < 520 ? 12 : 64)
+      : Math.max(insets.top + 24, screen.height * 0.12);
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" testID="popover-backdrop" />

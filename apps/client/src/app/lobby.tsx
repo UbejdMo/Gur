@@ -15,7 +15,7 @@ import { colors } from '@/theme';
  * still exists; otherwise to "Play with friends".
  */
 export default function LobbyScreen() {
-  const { lobby, status, clockOffset } = useOnline();
+  const { lobby, status, clockOffset, chat } = useOnline();
   const missing = lobby === null;
 
   useEffect(() => {
@@ -49,6 +49,7 @@ export default function LobbyScreen() {
         clockOffset={clockOffset}
         status={status}
         onLeave={leave}
+        chat={chat}
       />
     );
   }
@@ -59,6 +60,9 @@ export default function LobbyScreen() {
       onStart={() => online.start()}
       onLeave={leave}
       onInvite={(userId) => online.invite(userId)}
+      chat={chat}
+      onSay={(text) => online.say(text)}
+      onReport={(chatId, why, note, alsoBlock) => online.report(chatId, why, note, alsoBlock)}
     />
   );
 }

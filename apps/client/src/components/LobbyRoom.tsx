@@ -4,6 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Ack, LobbySettings, LobbyState } from '@gur/server/protocol';
 import { Avatar } from './Avatar';
 import { InviteFriends } from './InviteFriends';
+import { TableChat } from './TableChat';
+import type { TableLine } from '@/online/connection';
 import { avatarColor } from './PlayerPanel';
 import { colors } from '@/theme';
 
@@ -14,6 +16,10 @@ type Props = {
   onLeave: () => void;
   /** The leader invites a friend (their account id). */
   onInvite: (userId: string) => Promise<Ack<{ seconds: number }>>;
+  /** The chat in the waiting room (it carries on at the table). */
+  chat?: readonly TableLine[];
+  onSay?: (text: string) => Promise<Ack>;
+  onReport?: (chatId: string, why: string, note: string, alsoBlock: boolean) => Promise<Ack>;
 };
 
 const ROUNDS = [1, 3, 5] as const;
@@ -23,7 +29,7 @@ const SEATS = 4;
  * The waiting room. Everybody sees the code and who has joined. The lobby leader (who created
  * it) also invites friends, chooses the options and starts the game; the others wait for them.
  */
-export function LobbyRoom({ lobby, onSettings, onStart, onLeave, onInvite }: Props) {
+export function LobbyRoom({ lobby, onSettings, onStart, onLeave, onInvite, chat, onSay, onReport }: Props) {
   const insets = useSafeAreaInsets();
   const [error, setError] = useState<string | null>(null);
   const [shared, setShared] = useState<'shared' | 'copied' | null>(null);
@@ -69,6 +75,11 @@ export function LobbyRoom({ lobby, onSettings, onStart, onLeave, onInvite }: Pro
         },
       ]}
     >
+      {onSay && onReport && (
+        <View style={styles.chatCorner}>
+          <TableChat lobby={lobby} chat={chat ?? []} onSay={onSay} onReport={onReport} />
+        </View>
+      )}
       <Text style={styles.label}>Lobby code</Text>
       <Text style={styles.code} testID="lobby-code" accessibilityLabel={`Lobby code ${lobby.code.split('').join(' ')}`}>
         {lobby.code}
@@ -197,6 +208,7 @@ export function LobbyRoom({ lobby, onSettings, onStart, onLeave, onInvite }: Pro
 }
 
 const styles = StyleSheet.create({
+  chatCorner: { alignSelf: 'flex-end', marginBottom: -12 },
   screen: { flex: 1, backgroundColor: colors.table },
   content: { alignItems: 'center', gap: 14 },
   label: { color: colors.textMuted, fontSize: 13, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },

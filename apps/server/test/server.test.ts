@@ -549,3 +549,156 @@ describe('nudging a friend about a new message', () => {
     expect(ben.news).toHaveLength(31);
   });
 });
+
+describe('the chat at a table', () => {
+  const ANA = {
+    userId: '00000000-0000-4000-8000-0000000000a1',
+    username: 'AnaK',
+    publicId: '11111111',
+    avatarUrl: null,
+  };
+  const BEN = {
+    userId: '00000000-0000-4000-8000-0000000000b1',
+    username: 'BenM',
+    publicId: '22222222',
+    avatarUrl: null,
+  };
+  const accounts: Record<string, typeof ANA> = { 'token-ana': ANA, 'token-ben': BEN };
+  type Line = { id: number; from: string; seat: number; name: string; text: string };
+
+  async function table(extra: Partial<Parameters<typeof startServer>[0]> = {}) {
+    const reports: unknown[][] = [];
+    const blocks: unknown[][] = [];
+    const url = await startServer({
+      verify: async (token) => accounts[token] ?? null,
+      starOut: async (text) => text.replace(/\bdarn\b/gi, '****'),
+      reportPlayer: async (...args) => {
+        reports.push(args);
+        return args[2] === 'boring' ? 'invalid' : 'sent';
+      },
+      blockPlayer: async (...args) => {
+        blocks.push(args);
+      },
+      ...extra,
+    });
+    /** A player in a browser, collecting the chat lines they get. */
+    const player = async () => {
+      const p = await connect(url);
+      const lines: Line[] = [];
+      const resets: number[] = [];
+      p.socket.on('chat', (update) => {
+        if (update.reset) {
+          resets.push(update.lines.length);
+          lines.length = 0;
+        }
+        lines.push(...(update.lines as Line[]));
+      });
+      return { ...p, lines, resets };
+    };
+    const ana = await player();
+    const created = await ask<{ code: string; memberId: string }>((reply) =>
+      ana.socket.emit('create', { name: '', token: 'token-ana' }, reply),
+    );
+    if (!created.ok) throw new Error(created.error);
+    const ben = await player();
+    await ask((reply) => ben.socket.emit('join', { code: created.code, name: '', token: 'token-ben' }, reply));
+    const guest = await player();
+    await ask((reply) => guest.socket.emit('join', { code: created.code, name: 'Cem' }, reply));
+    const lobby = await until(ana.seen, (s) => s.members.length === 3);
+    return {
+      url,
+      code: created.code,
+      ana,
+      ben,
+      guest,
+      player,
+      chatIds: lobby.members.map((m) => m.chatId),
+      reports,
+      blocks,
+    };
+  }
+  const say = (who: { socket: Client }, text: unknown) =>
+    ask((reply) => who.socket.emit('say', { text } as never, reply));
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 60));
+
+  it('what one player says reaches everybody at the table, bad words starred out', async () => {
+    const { ana, ben, guest, chatIds } = await table();
+    expect(await say(ben, 'Good luck, darn it')).toEqual({ ok: true });
+    expect(await say(guest, '🔥')).toEqual({ ok: true });
+    await settle();
+    for (const p of [ana, ben, guest]) {
+      expect(p.lines.map((l) => `${l.name}:${l.text}`)).toEqual(['BenM:Good luck, **** it', 'Cem:🔥']);
+    }
+    expect(ana.lines[0]).toMatchObject({ from: chatIds[1], seat: 1 });
+  });
+
+  it('someone who joins gets what was said so far', async () => {
+    const { code, ana, player } = await table();
+    await say(ana, 'Welcome');
+    const dea = await player();
+    await ask((reply) => dea.socket.emit('join', { code, name: 'Dea' }, reply));
+    await settle();
+    expect(dea.resets).toEqual([1]);
+    expect(dea.lines.map((l) => l.text)).toEqual(['Welcome']);
+  });
+
+  it('refuses nonsense, too much at once, and players who are not at a table', async () => {
+    const { ana, player } = await table();
+    expect(await say(ana, '   ')).toMatchObject({ ok: false, error: 'Type something first' });
+    expect(await say(ana, { not: 'text' })).toMatchObject({ ok: false });
+    for (let i = 0; i < 5; i++) await say(ana, `line ${i}`);
+    expect(await say(ana, 'too fast')).toMatchObject({ error: 'Slow down a little' });
+    const stranger = await player();
+    expect(await say(stranger, 'hi')).toMatchObject({ error: 'You are not in a lobby' });
+  });
+
+  it('chat still works when the bad-words list cannot be reached', async () => {
+    const slow = await table({ starOut: () => Promise.reject(new Error('down')) });
+    expect(await say(slow.ana, 'still here')).toEqual({ ok: true });
+    await settle();
+    expect(slow.ben.lines.map((l) => l.text)).toEqual(['still here']);
+    const none = await table({ starOut: undefined });
+    expect(await say(none.ana, 'darn')).toEqual({ ok: true });
+    await settle();
+    expect(none.ben.lines.map((l) => l.text)).toEqual(['darn']);
+  });
+
+  it('a signed-in player reports another, with what they said here, and can block them too', async () => {
+    const { ana, ben, chatIds, reports, blocks } = await table();
+    await say(ben, 'you are terrible');
+    await say(ben, 'quit the game');
+    const report = (request: object) => ask((reply) => ana.socket.emit('report', request as never, reply));
+    expect(
+      await report({ chatId: chatIds[1], why: 'harassment', note: ' rude ', alsoBlock: true, token: 'token-ana' }),
+    ).toEqual({ ok: true });
+    expect(reports).toEqual([['token-ana', BEN.userId, 'harassment', 'rude', ['you are terrible', 'quit the game']]]);
+    expect(blocks).toEqual([['token-ana', BEN.userId]]);
+    // a wrong reason is refused in words; without alsoBlock nobody is blocked
+    expect(await report({ chatId: chatIds[1], why: 'boring', token: 'token-ana' })).toMatchObject({
+      error: expect.stringMatching(/Choose a reason/),
+    });
+    expect(blocks).toHaveLength(1);
+  });
+
+  it('guests cannot report or be reported (they can be muted); nobody reports themselves', async () => {
+    const { ana, guest, chatIds } = await table();
+    const report = (who: { socket: Client }, request: object) =>
+      ask((reply) => who.socket.emit('report', request as never, reply));
+    expect(await report(guest, { chatId: chatIds[0], why: 'spam' })).toMatchObject({
+      error: expect.stringMatching(/Sign in to report/),
+    });
+    expect(await report(ana, { chatId: chatIds[2], why: 'spam', token: 'token-ana' })).toMatchObject({
+      error: expect.stringMatching(/Only players who signed in/),
+    });
+    expect(await report(ana, { chatId: chatIds[0], why: 'spam', token: 'token-ana' })).toMatchObject({
+      error: 'You cannot report yourself',
+    });
+    expect(await report(ana, { chatId: 'nobody', why: 'spam', token: 'token-ana' })).toMatchObject({
+      error: expect.stringMatching(/not at this table/),
+    });
+    const offline = await table({ reportPlayer: undefined });
+    expect(await report(offline.ana, { chatId: offline.chatIds[1], why: 'spam', token: 'token-ana' })).toMatchObject({
+      error: 'Reporting is not available right now',
+    });
+  });
+});

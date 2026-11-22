@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { safePictureUrl, supabaseFriendsCheck, supabaseVerifier } from '../src/verify';
+import { safePictureUrl, supabaseFriendsCheck, supabaseTableTools, supabaseVerifier } from '../src/verify';
 
 const USER = '11111111-2222-3333-4444-555555555555';
 const json = (body: unknown, status = 200) =>
@@ -121,5 +121,47 @@ describe('checking friends with Supabase', () => {
     expect(await refused('t', BEN)).toBe(false);
     const odd = supabaseFriendsCheck('https://p', 'k', fakeFetch(200, { not: 'a list' }) as typeof fetch);
     expect(await odd('t', BEN)).toBe(false);
+  });
+});
+
+describe('the chat tools in Supabase', () => {
+  function recorder(answers: Record<string, { status: number; body: string }>) {
+    const calls: { name: string; body: unknown; auth: string | undefined }[] = [];
+    const fetcher = vi.fn(async (address: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const name = String(address).split('/').pop()!;
+      const headers = init?.headers as Record<string, string>;
+      calls.push({ name, body: JSON.parse(String(init?.body)), auth: headers.Authorization });
+      const answer = answers[name] ?? { status: 404, body: '' };
+      return new Response(answer.status === 204 ? null : answer.body, { status: answer.status });
+    });
+    return { tools: supabaseTableTools('https://p.supabase.co/', 'sb_publishable_x', fetcher as typeof fetch), calls };
+  }
+
+  it('stars out words without a sign-in, so guests are cleaned too', async () => {
+    const { tools, calls } = recorder({ star_out: { status: 200, body: '"good **** game"' } });
+    expect(await tools.starOut('good darn game')).toBe('good **** game');
+    expect(calls).toEqual([{ name: 'star_out', body: { message: 'good darn game' }, auth: undefined }]);
+  });
+
+  it("reports and blocks with the player's own token", async () => {
+    const { tools, calls } = recorder({
+      report_table_player: { status: 200, body: '"sent"' },
+      block_player: { status: 204, body: '' },
+    });
+    expect(await tools.reportPlayer('token-ana', 'user-ben', 'hate', '', ['bad words'])).toBe('sent');
+    await tools.blockPlayer('token-ana', 'user-ben');
+    expect(calls).toEqual([
+      {
+        name: 'report_table_player',
+        body: { who: 'user-ben', why: 'hate', note: null, said: ['bad words'] },
+        auth: 'Bearer token-ana',
+      },
+      { name: 'block_player', body: { who: 'user-ben' }, auth: 'Bearer token-ana' },
+    ]);
+  });
+
+  it('says so when the database refuses', async () => {
+    const { tools } = recorder({ star_out: { status: 500, body: '' } });
+    await expect(tools.starOut('hi')).rejects.toThrow(/500/);
   });
 });
