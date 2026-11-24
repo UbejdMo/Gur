@@ -15,12 +15,13 @@ beforeEach(() => {
 });
 
 describe('Home', () => {
-  it('shows the name of the game and the two ways to play, as tiles', async () => {
+  it('shows the name of the game and the three ways to play, as tiles', async () => {
     await render(<Home />);
     expect(screen.getByRole('header', { name: 'Gur' })).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Play against bots' })).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Play with friends' })).toBeOnTheScreen();
-    expect(screen.getAllByTestId('card-tile')).toHaveLength(6);
+    expect(screen.getByRole('button', { name: 'Play online' })).toBeOnTheScreen();
+    expect(screen.getAllByTestId('card-tile')).toHaveLength(9);
     // the options for a bots game are not on the first screen any more
     expect(screen.queryByLabelText('Allow 12-13-1')).toBeNull();
   });

@@ -18,10 +18,12 @@ type Props = {
   onLeave: () => void;
   /** The chat at the table. */
   chat?: readonly TableLine[];
+  /** At a public table, after its round: find a new table. */
+  onPlayAgain?: () => void;
 };
 
 /** A game with friends: the same table as against the bots, run by the server. */
-export function OnlineTable({ lobby, connection, clockOffset, status, onLeave, chat = [] }: Props) {
+export function OnlineTable({ lobby, connection, clockOffset, status, onLeave, chat = [], onPlayAgain }: Props) {
   const table = useOnlineTable(lobby, connection, clockOffset);
   const { view } = table;
   const host = lobby.members[lobby.you]!.host;
@@ -30,19 +32,26 @@ export function OnlineTable({ lobby, connection, clockOffset, status, onLeave, c
   const nextIn = useCountdown(view.status === 'roundOver' ? lobby.nextRoundAt : null, clockOffset);
 
   const over = view.status !== 'playing';
-  const note =
-    view.status === 'roundOver'
+  // A public table plays one round: then anyone can play again at a new table, or leave.
+  const open = lobby.kind === 'public';
+  const note = open
+    ? null
+    : view.status === 'roundOver'
       ? nextIn === null
         ? 'The next round starts soon'
         : `The next round starts in ${nextIn} second${nextIn === 1 ? '' : 's'}`
       : host
         ? null
         : `Waiting for ${hostName} to go back to the lobby`;
-  const primary = !host
-    ? null
-    : view.status === 'roundOver'
-      ? { label: 'Next round now', onPress: () => void connection.next() }
-      : { label: 'Back to the lobby', onPress: () => void connection.next() };
+  const primary = open
+    ? onPlayAgain
+      ? { label: 'Play again', onPress: onPlayAgain }
+      : null
+    : !host
+      ? null
+      : view.status === 'roundOver'
+        ? { label: 'Next round now', onPress: () => void connection.next() }
+        : { label: 'Back to the lobby', onPress: () => void connection.next() };
 
   return (
     <View style={styles.fill}>

@@ -27,6 +27,8 @@ function lobby(code: string, signedIn = false): LobbyState {
     members: ['Ana', 'Ben', 'Cem', 'Bot'].map(member),
     settings: { aceHigh: true, rounds: 1, fillWithBots: true },
     game: null,
+    kind: 'friends',
+    startsAt: null,
     turnEndsAt: null,
     nextRoundAt: null,
     now: Date.now(),

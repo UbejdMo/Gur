@@ -98,3 +98,46 @@ describe('keeping the list clean', () => {
     expect(lobby.stateFor(ana).game!.round.turn).toBe(turn);
   });
 });
+
+describe('matching players for Play online', () => {
+  it('seats players who made the same 12-13-1 choice together, and keeps the others apart', () => {
+    const { lobbies } = makeLobbies();
+    expect(lobbies.findOpen(false)).toBeNull();
+    const table = lobbies.create({ aceHigh: false });
+    table.join('Ana');
+    expect(lobbies.findOpen(false)).toBe(table);
+    expect(lobbies.findOpen(true)).toBeNull();
+    // a friends' lobby is never offered to strangers
+    lobbies.create().join('Cem');
+    expect(lobbies.findOpen(false)).toBe(table);
+  });
+
+  it('prefers the table with the most players, and skips full, started and empty ones', () => {
+    const { lobbies } = makeLobbies();
+    const first = lobbies.create({ aceHigh: true });
+    first.join('Ana');
+    const second = lobbies.create({ aceHigh: true });
+    second.join('Ben');
+    second.join('Cem');
+    expect(lobbies.findOpen(true)).toBe(second);
+    // nobody connected at the busier table any more: it is skipped
+    for (const id of second.memberIds()) second.setConnected(id, false);
+    expect(lobbies.findOpen(true)).toBe(first);
+    first.join('Dua');
+    first.join('Eda');
+    first.join('Fis');
+    expect(first.waiting).toBe(false);
+    expect(lobbies.findOpen(true)).toBeNull();
+  });
+
+  it('sends a signed-in player back to the table where they already wait', () => {
+    const { lobbies } = makeLobbies();
+    const busy = lobbies.create({ aceHigh: true });
+    busy.join('Ana');
+    busy.join('Ben');
+    const mine = lobbies.create({ aceHigh: true });
+    mine.join('', { userId: 'u-1', username: 'Ubejd', publicId: '12345678', avatarUrl: null });
+    expect(lobbies.findOpen(true)).toBe(busy);
+    expect(lobbies.findOpen(true, 'u-1')).toBe(mine);
+  });
+});

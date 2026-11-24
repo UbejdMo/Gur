@@ -60,6 +60,10 @@ export interface LobbyConfig {
   awayDelayMs?: number;
   /** How long the results stay up before the next round starts by itself. */
   nextRoundDelayMs?: number;
+  /** A public table ("Play online") for players who chose this about 12-13-1. Without it, a friends' lobby. */
+  open?: { aceHigh: boolean };
+  /** How long a public table waits for four players before it starts with bots. */
+  matchWaitMs?: number;
 }
 
 export const MAX_PLAYERS = 4;
@@ -68,6 +72,8 @@ export const MAX_CHAT_LENGTH = 200;
 export const CHAT_KEPT = 50;
 export const CHAT_PER_10S = 5;
 export const MAX_NAME_LENGTH = 16;
+/** A public table starts with bots after this long, if at least two players are there. */
+export const MATCH_WAIT_MS = 30_000;
 export const DEFAULT_SETTINGS: LobbySettings = { aceHigh: true, rounds: 1, fillWithBots: false };
 
 /** A player whose sign-in the server has checked. */
@@ -94,6 +100,8 @@ interface Member {
 
 export class Lobby {
   readonly code: string;
+  /** A public table: no leader, one round, bots in the empty seats, and it starts by itself. */
+  readonly isOpen: boolean;
   private members: Member[] = [];
   private hostId: string | null = null;
   private settings: LobbySettings = { ...DEFAULT_SETTINGS };
@@ -111,6 +119,9 @@ export class Lobby {
   private chatCount = 0;
   /** When each player last spoke, for the limit on how fast they may. */
   private spoke = new Map<string, number[]>();
+  /** A public table still waiting: when it starts with bots. Null once that time has passed. */
+  private startsAt: number | null = null;
+  private waitTimer: unknown = null;
 
   private readonly botDelayMs: readonly [number, number];
   private readonly awayDelayMs: number;
@@ -122,6 +133,13 @@ export class Lobby {
     this.awayDelayMs = config.awayDelayMs ?? 1500;
     this.nextRoundDelayMs = config.nextRoundDelayMs ?? 12_000;
     this.emptySince = config.scheduler.now();
+    this.isOpen = config.open !== undefined;
+    if (config.open) {
+      this.settings = { aceHigh: config.open.aceHigh, rounds: 1, fillWithBots: true };
+      const wait = config.matchWaitMs ?? MATCH_WAIT_MS;
+      this.startsAt = config.scheduler.now() + wait;
+      this.waitTimer = config.scheduler.set(() => this.waitOver(), wait);
+    }
   }
 
   // ---------- who is here ----------
@@ -143,9 +161,47 @@ export class Lobby {
       chatId: this.config.newId(),
     };
     this.members.push(member);
-    this.hostId ??= member.id;
-    this.changed();
+    if (!this.isOpen) this.hostId ??= member.id;
+    if (this.readyToStart()) this.begin();
+    else this.changed();
     return member.id;
+  }
+
+  // ---------- a public table ----------
+
+  /** Still waiting for players, before the game. */
+  get waiting(): boolean {
+    return this.game === null;
+  }
+
+  /** Whether 12-13-1 is allowed at this table. */
+  get aceHigh(): boolean {
+    return this.settings.aceHigh;
+  }
+
+  /** How many seats are taken. */
+  get size(): number {
+    return this.members.length;
+  }
+
+  /** How many players are here (connected) right now. */
+  get here(): number {
+    return this.humans().filter((m) => m.connected).length;
+  }
+
+  /** A public table starts when four players are here, or, once the wait is over, when two are. */
+  private readyToStart(): boolean {
+    if (!this.isOpen || this.game) return false;
+    return this.here >= MAX_PLAYERS || (this.startsAt === null && this.here >= 2);
+  }
+
+  /** The wait at a public table is over: start with bots if somebody else is here, or keep waiting. */
+  private waitOver(): void {
+    this.waitTimer = null;
+    this.startsAt = null;
+    if (this.game) return;
+    if (this.readyToStart()) this.begin();
+    else this.changed();
   }
 
   /**
@@ -178,7 +234,8 @@ export class Lobby {
     const member = this.member(memberId);
     if (member.connected === connected) return;
     member.connected = connected;
-    this.changed();
+    if (this.readyToStart()) this.begin();
+    else this.changed();
   }
 
   /** The player goes for good. Before the game their place is freed; during it the game plays on for them. */
@@ -236,6 +293,14 @@ export class Lobby {
   start(memberId: string): void {
     this.assertHost(memberId);
     if (this.game) throw new LobbyError('This game has already started');
+    this.begin();
+  }
+
+  /** Seats the players (and bots) and deals. At a public table, players who are not here lose their seat. */
+  private begin(): void {
+    this.clearWaitTimer();
+    this.startsAt = null;
+    if (this.isOpen) this.members = this.members.filter((m) => m.connected);
     const seats = [...this.members];
     if (this.settings.fillWithBots) {
       for (let n = 1; seats.length < MAX_PLAYERS; n++) {
@@ -294,6 +359,8 @@ export class Lobby {
     if (you === -1) throw new LobbyError('You are not in this lobby');
     return {
       code: this.code,
+      kind: this.isOpen ? 'public' : 'friends',
+      startsAt: this.startsAt,
       you,
       members: this.members.map((m) => ({
         name: m.name,
@@ -371,6 +438,7 @@ export class Lobby {
   dispose(): void {
     this.clearTurnTimer();
     this.clearNextRoundTimer();
+    this.clearWaitTimer();
   }
 
   // ---------- the clock ----------
@@ -443,6 +511,11 @@ export class Lobby {
     this.turnEndsAt = null;
   }
 
+  private clearWaitTimer(): void {
+    if (this.waitTimer !== null) this.config.scheduler.clear(this.waitTimer);
+    this.waitTimer = null;
+  }
+
   private clearNextRoundTimer(): void {
     if (this.nextRoundTimer !== null) this.config.scheduler.clear(this.nextRoundTimer);
     this.nextRoundTimer = null;
@@ -472,6 +545,7 @@ export class Lobby {
 
   private assertHost(memberId: string): void {
     this.member(memberId);
+    if (this.isOpen) throw new LobbyError('This table starts by itself');
     if (memberId !== this.hostId) throw new LobbyError('Only the player who created the lobby can do that');
   }
 

@@ -543,3 +543,115 @@ describe('the chat', () => {
     expect(() => lobby.chatAuthor('nobody')).toThrow(/not at this table/);
   });
 });
+
+describe('a public table (Play online)', () => {
+  const open = (aceHigh = false) => makeLobby({ open: { aceHigh }, matchWaitMs: 30_000 });
+
+  it('has no leader, one round, bots for empty seats, and the 12-13-1 choice its players made', () => {
+    const { lobby } = open(true);
+    const ana = lobby.join('Ana');
+    const state = lobby.stateFor(ana);
+    expect(state).toMatchObject({ kind: 'public', settings: { aceHigh: true, rounds: 1, fillWithBots: true } });
+    expect(state.startsAt).toBe(Date.now() + 30_000);
+    expect(state.members[0]!.host).toBe(false);
+    // nobody changes the options or starts it by hand
+    expect(() => lobby.setSettings(ana, { rounds: 3 })).toThrow('This table starts by itself');
+    expect(() => lobby.start(ana)).toThrow('This table starts by itself');
+    expect(() => lobby.checkInvite(ana, '00000000-0000-0000-0000-000000000000')).toThrow('This table starts by itself');
+    // a friends' lobby says what it is too
+    const friends = makeLobby().lobby;
+    expect(friends.stateFor(friends.join('Ana'))).toMatchObject({ kind: 'friends', startsAt: null });
+  });
+
+  it('starts the moment a fourth player sits down', () => {
+    const { lobby } = open();
+    const ids = ['Ana', 'Ben', 'Cem'].map((name) => lobby.join(name));
+    expect(lobby.stateFor(ids[0]!).game).toBeNull();
+    const dua = lobby.join('Dua');
+    const state = lobby.stateFor(dua);
+    expect(state.game).not.toBeNull();
+    expect(state.members.map((m) => [m.name, m.bot])).toEqual([
+      ['Ana', false],
+      ['Ben', false],
+      ['Cem', false],
+      ['Dua', false],
+    ]);
+    expect(state.startsAt).toBeNull();
+    expect(() => lobby.join('Eda')).toThrow('This game has already started');
+  });
+
+  it('after 30 seconds starts with bots in the empty seats, if at least two players are there', () => {
+    const { lobby } = open();
+    const ana = lobby.join('Ana');
+    lobby.join('Ben');
+    vi.advanceTimersByTime(29_999);
+    expect(lobby.stateFor(ana).game).toBeNull();
+    vi.advanceTimersByTime(1);
+    const state = lobby.stateFor(ana);
+    expect(state.game).not.toBeNull();
+    expect(state.members.map((m) => m.bot)).toEqual([false, false, true, true]);
+    expect(state.game!.settings.rounds).toBe(1);
+  });
+
+  it('a player alone keeps waiting after 30 seconds, and the game starts as soon as somebody comes', () => {
+    const { lobby } = open();
+    const ana = lobby.join('Ana');
+    vi.advanceTimersByTime(30_000);
+    expect(lobby.stateFor(ana)).toMatchObject({ game: null, startsAt: null });
+    vi.advanceTimersByTime(60_000);
+    expect(lobby.stateFor(ana).game).toBeNull();
+    lobby.join('Ben');
+    expect(lobby.stateFor(ana).game).not.toBeNull();
+    expect(lobby.stateFor(ana).members.map((m) => m.bot)).toEqual([false, false, true, true]);
+  });
+
+  it('players whose app dropped before the start lose their seat; one who comes back in time keeps it', () => {
+    const { lobby } = open();
+    const ana = lobby.join('Ana');
+    const ben = lobby.join('Ben');
+    const cem = lobby.join('Cem');
+    lobby.setConnected(ben, false);
+    lobby.setConnected(cem, false);
+    lobby.setConnected(cem, true);
+    expect(lobby.here).toBe(2);
+    vi.advanceTimersByTime(30_000);
+    const state = lobby.stateFor(ana);
+    expect(state.members.map((m) => m.name)).toEqual(['Ana', 'Cem', 'Bot 1', 'Bot 2']);
+    expect(lobby.has(ben)).toBe(false);
+    expect(() => lobby.stateFor(ben)).toThrow('You are not in this lobby');
+  });
+
+  it('one player alone whose friend reconnects after the wait starts at once', () => {
+    const { lobby } = open();
+    const ana = lobby.join('Ana');
+    const ben = lobby.join('Ben');
+    lobby.setConnected(ben, false);
+    vi.advanceTimersByTime(30_000);
+    expect(lobby.stateFor(ana).game).toBeNull();
+    lobby.setConnected(ben, true);
+    expect(lobby.stateFor(ana).game).not.toBeNull();
+  });
+
+  it('a player who leaves before the start frees their seat; the last one out closes the table', () => {
+    const { lobby } = open();
+    const ana = lobby.join('Ana');
+    const ben = lobby.join('Ben');
+    lobby.leave(ben);
+    expect(lobby.size).toBe(1);
+    lobby.leave(ana);
+    expect(lobby.abandoned).toBe(true);
+    lobby.dispose();
+    // its clock is stopped: nothing starts later
+    vi.advanceTimersByTime(60_000);
+  });
+
+  it('after its one round the match is over, and does not go on by itself', () => {
+    const { lobby } = open();
+    const ids = ['Ana', 'Ben', 'Cem', 'Dua'].map((name) => lobby.join(name));
+    for (let i = 0; i < 400 && lobby.stateFor(ids[0]!).game!.status === 'playing'; i++) vi.advanceTimersByTime(15_000);
+    expect(lobby.stateFor(ids[0]!).game!.status).toBe('matchOver');
+    vi.advanceTimersByTime(60_000);
+    expect(lobby.stateFor(ids[0]!)).toMatchObject({ nextRoundAt: null, game: { status: 'matchOver' } });
+    expect(() => lobby.next(ids[0]!)).toThrow('This table starts by itself');
+  });
+});

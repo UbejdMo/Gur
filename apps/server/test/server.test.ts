@@ -550,6 +550,95 @@ describe('nudging a friend about a new message', () => {
   });
 });
 
+describe('playing online with strangers', () => {
+  const find = (client: { socket: Client }, request: { name: string; aceHigh: boolean; token?: string }) =>
+    ask<{ code: string; memberId: string }>((reply) => client.socket.emit('find', request, reply));
+
+  it('matches players who made the same 12-13-1 choice, and starts when four are there', async () => {
+    const url = await startServer();
+    const [ana, ben, cem, dua, eda] = await Promise.all([1, 2, 3, 4, 5].map(() => connect(url)));
+    const first = await find(ana!, { name: 'Ana', aceHigh: false });
+    if (!first.ok) throw new Error(first.error);
+    const waiting = await until(ana!.seen, (s) => s.code === first.code);
+    expect(waiting).toMatchObject({ kind: 'public', game: null, settings: { aceHigh: false, rounds: 1 } });
+    expect(waiting.startsAt).toBeGreaterThan(waiting.now);
+
+    // a player who wants 12-13-1 goes to another table
+    const other = await find(eda!, { name: 'Eda', aceHigh: true });
+    expect(other).toMatchObject({ ok: true });
+    expect((other as { code: string }).code).not.toBe(first.code);
+
+    for (const [client, name] of [
+      [ben!, 'Ben'],
+      [cem!, 'Cem'],
+    ] as const) {
+      expect(await find(client, { name, aceHigh: false })).toMatchObject({ ok: true, code: first.code });
+    }
+    expect((await until(ana!.seen, (s) => s.members.length === 3)).game).toBeNull();
+    expect(await find(dua!, { name: 'Dua', aceHigh: false })).toMatchObject({ ok: true, code: first.code });
+    const playing = await until(ana!.seen, (s) => s.game !== null);
+    expect(playing.members.map((m) => [m.name, m.bot])).toEqual([
+      ['Ana', false],
+      ['Ben', false],
+      ['Cem', false],
+      ['Dua', false],
+    ]);
+    // nobody started it by hand, and nobody can steer it
+    expect(await ask((reply) => ana!.socket.emit('next', reply))).toEqual({
+      ok: false,
+      error: 'This table starts by itself',
+    });
+  });
+
+  it('starts with bots after the wait when two are there; a friend can join a waiting table by its code', async () => {
+    const url = await startServer({ lobby: { botDelayMs: [5, 10], matchWaitMs: 300 } });
+    const ana = await connect(url);
+    const ben = await connect(url);
+    const found = await find(ana, { name: 'Ana', aceHigh: true });
+    if (!found.ok) throw new Error(found.error);
+    expect(await ask((reply) => ben.socket.emit('join', { code: found.code, name: 'Ben' }, reply))).toMatchObject({
+      ok: true,
+    });
+    const playing = await until(ana.seen, (s) => s.game !== null);
+    expect(playing.members.map((m) => m.bot)).toEqual([false, false, true, true]);
+  });
+
+  it('a player alone is told the wait is over, and Play again finds a new table after the game', async () => {
+    const url = await startServer({ lobby: { botDelayMs: [5, 10], matchWaitMs: 200 } });
+    const ana = await connect(url);
+    const found = await find(ana, { name: 'Ana', aceHigh: false });
+    if (!found.ok) throw new Error(found.error);
+    await until(ana.seen, (s) => s.startsAt === null && s.game === null);
+    // looking again from a table leaves it: the old one is gone
+    const again = await find(ana, { name: 'Ana', aceHigh: false });
+    if (!again.ok) throw new Error(again.error);
+    expect(again.code).not.toBe(found.code);
+    expect(server!.lobbies.size).toBe(1);
+  });
+
+  it('refuses a missing choice or name, and takes a signed-in player name from their profile', async () => {
+    const accounts: Record<string, { userId: string; username: string; publicId: string; avatarUrl: string | null }> = {
+      'token-ana': { userId: 'u-ana', username: 'AnaK', publicId: '48213377', avatarUrl: null },
+    };
+    const url = await startServer({ verify: async (token) => accounts[token] ?? null });
+    const ana = await connect(url);
+    expect(await ask((reply) => ana.socket.emit('find', { name: 'Ana' } as never, reply))).toEqual({
+      ok: false,
+      error: 'Choose whether 12-13-1 is allowed',
+    });
+    expect(await find(ana, { name: '  ', aceHigh: true })).toMatchObject({ ok: false, error: 'Please choose a name' });
+    expect(await find(ana, { name: 'x', aceHigh: true, token: 'nope' })).toMatchObject({ ok: false });
+    expect(await find(ana, { name: 'Someone', aceHigh: true, token: 'token-ana' })).toMatchObject({ ok: true });
+    const state = await until(ana.seen, (s) => s.kind === 'public');
+    expect(state.members[0]).toMatchObject({ name: 'AnaK', publicId: '48213377' });
+    // the same account from a second device sits in the same seat
+    const tablet = await connect(url);
+    const twice = await find(tablet, { name: 'x', aceHigh: true, token: 'token-ana' });
+    expect(twice).toMatchObject({ ok: true, code: state.code });
+    expect((await until(tablet.seen, (s) => s.kind === 'public')).members).toHaveLength(1);
+  });
+});
+
 describe('the chat at a table', () => {
   const ANA = {
     userId: '00000000-0000-4000-8000-0000000000a1',

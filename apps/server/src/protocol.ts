@@ -50,6 +50,18 @@ export interface MemberView {
 export interface LobbyState {
   /** The code friends type in to join. */
   code: string;
+  /**
+   * 'friends': a lobby somebody created; its leader chooses the options and starts the game.
+   * 'public': a table of players who were matched by the server ("Play online"): it has no
+   * leader, one round, bots in the empty seats, and it starts by itself.
+   */
+  kind: 'friends' | 'public';
+  /**
+   * A public table that is still waiting: when it starts (with bots in the empty seats, if at
+   * least two players are there), on the server's clock. Null when that time has passed and the
+   * player is still alone: the table then starts as soon as somebody else comes.
+   */
+  startsAt: number | null;
   /** Your place in `members`. In a game it is also your seat. */
   you: number;
   members: MemberView[];
@@ -88,6 +100,14 @@ export interface ClientToServerEvents {
    */
   join: (
     request: { code: string; name: string; token?: string | null },
+    reply: Reply<{ code: string; memberId: string }>,
+  ) => void;
+  /**
+   * Play online: sits you at a public table with players who made the same 12-13-1 choice,
+   * or at a new one where others will join you. Leaves the lobby you were in.
+   */
+  find: (
+    request: { name: string; aceHigh: boolean; token?: string | null },
     reply: Reply<{ code: string; memberId: string }>,
   ) => void;
   /** Come back after losing the connection. */
