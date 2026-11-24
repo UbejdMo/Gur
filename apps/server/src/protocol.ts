@@ -57,9 +57,9 @@ export interface LobbyState {
    */
   kind: 'friends' | 'public';
   /**
-   * A public table that is still waiting: when it starts with the players who are there (if
-   * at least two are), on the server's clock. Null when that time has passed and the
-   * player is still alone: the table then starts as soon as somebody else comes.
+   * A public table that is still waiting with two or three players: when it starts with them,
+   * on the server's clock (30 seconds after the second player sat down). Null while a player is
+   * alone: the clock starts when somebody else comes.
    */
   startsAt: number | null;
   /** Your place in `members`. In a game it is also your seat. */

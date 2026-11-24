@@ -168,9 +168,10 @@ describe('waiting at a public table', () => {
     expect(p.onLeave).toHaveBeenCalled();
   });
 
-  it('a player alone waits for at least one more, however long it takes', async () => {
-    for (const startsAt of [Date.now() + 9_900, null]) {
-      await render(<LobbyRoom lobby={room(1, startsAt)} {...props()} />);
+  it('a player alone waits for at least one more, however long it takes, with no clock', async () => {
+    for (const players of [1, 2]) {
+      // two seats, but one player dropped: the server has stopped the clock
+      await render(<LobbyRoom lobby={room(players, null)} {...props()} />);
       expect(screen.getByTestId('match-status')).toHaveTextContent(
         'Looking for players… The game starts when at least one more player comes.',
       );

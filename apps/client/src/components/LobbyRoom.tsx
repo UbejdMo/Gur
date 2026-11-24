@@ -219,7 +219,8 @@ function FriendsLobby({ lobby, onSettings, onStart, onLeave, onInvite, chat, onS
 /**
  * Waiting at a public table: the seats filling up, how long until the game starts, and the code,
  * so a friend can sit down too. There are no bots online: the game starts with four players, or
- * when the time is up with the two or three who are there. A player alone keeps waiting.
+ * with the two or three who are there 30 seconds after the second sat down. A player alone keeps
+ * waiting, with no clock.
  */
 function PublicTable({ lobby, onLeave, chat, onSay, onReport, clockOffset = 0 }: Props) {
   const insets = useSafeAreaInsets();
@@ -227,7 +228,6 @@ function PublicTable({ lobby, onLeave, chat, onSay, onReport, clockOffset = 0 }:
   // A phone on its side: the seats on the left, the choices on the right, all on one screen.
   const low = screen.height < 520 && screen.width > screen.height;
   const left = useCountdown(lobby.startsAt, clockOffset);
-  const players = lobby.members.length;
   const seconds = left === null ? '' : ` ${left} second${left === 1 ? '' : 's'}`;
 
   return (
@@ -254,7 +254,7 @@ function PublicTable({ lobby, onLeave, chat, onSay, onReport, clockOffset = 0 }:
             Finding players
           </Text>
           <Text style={styles.waiting} testID="match-status" accessibilityLiveRegion="polite">
-            {players >= 2
+            {lobby.startsAt !== null
               ? `The game starts in${seconds || ' a moment'}, or as soon as four are here.`
               : 'Looking for players… The game starts when at least one more player comes.'}
           </Text>
