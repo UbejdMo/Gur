@@ -53,12 +53,12 @@ export interface LobbyState {
   /**
    * 'friends': a lobby somebody created; its leader chooses the options and starts the game.
    * 'public': a table of players who were matched by the server ("Play online"): it has no
-   * leader, one round, bots in the empty seats, and it starts by itself.
+   * leader, one round and no bots, and it starts by itself.
    */
   kind: 'friends' | 'public';
   /**
-   * A public table that is still waiting: when it starts (with bots in the empty seats, if at
-   * least two players are there), on the server's clock. Null when that time has passed and the
+   * A public table that is still waiting: when it starts with the players who are there (if
+   * at least two are), on the server's clock. Null when that time has passed and the
    * player is still alone: the table then starts as soon as somebody else comes.
    */
   startsAt: number | null;

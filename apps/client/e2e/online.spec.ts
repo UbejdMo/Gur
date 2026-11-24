@@ -52,7 +52,7 @@ async function findPlayers(page: Awaited<ReturnType<typeof guest>>, name: string
   await expect(page.getByTestId('match-status').or(page.getByTestId('rack-row').first())).toBeVisible();
 }
 
-test('players who made the same 12-13-1 choice are seated together, and the game starts with bots', async ({
+test('players who made the same 12-13-1 choice are seated together, and two can play without bots', async ({
   browser,
 }, testInfo) => {
   const ana = await guest(browser, testInfo.project.use);
@@ -68,59 +68,53 @@ test('players who made the same 12-13-1 choice are seated together, and the game
   // Ana and Ben share a table; Cem, who wants 12-13-1, waits at another
   await expect(ana.getByTestId('member')).toHaveCount(2);
   await expect(ana.getByTestId('members')).toContainText('Ben');
-  await expect(ben.getByTestId('match-status')).toContainText('Bots take the empty seats');
+  await expect(ben.getByTestId('match-status')).toContainText('or as soon as four are here');
   await testInfo.attach('waiting', { body: await ben.screenshot(), contentType: 'image/png' });
   await expect(cem.getByTestId('member')).toHaveCount(1);
 
-  // when the wait is over the game starts, with bots in the two empty seats
+  // when the wait is over the game starts with the two of them: no bots online
   await expect(ana.getByTestId('rack-row')).toHaveCount(2, { timeout: 10_000 });
   await expect(ben.getByTestId('rack-row')).toHaveCount(2);
-  await expect(ana.getByTestId('seat')).toHaveCount(3);
+  await expect(ana.getByTestId('seat')).toHaveCount(1);
   await expect(ana.getByTestId('seat').filter({ hasText: 'Ben' })).toHaveCount(1);
-  await expect(ana.getByTestId('seat').filter({ hasText: /Bot \d/ })).toHaveCount(2);
+  await expect(ana.getByText(/Bot \d/)).toHaveCount(0);
+  // Cem, alone at his table, is still waiting
+  await expect(cem.getByTestId('rack-row')).toHaveCount(0);
+  await expect(cem.getByTestId('match-status')).toContainText('at least one more player');
   await testInfo.attach('table', { body: await ana.screenshot(), contentType: 'image/png' });
 
   for (const page of [ana, ben, cem]) await page.context().close();
 });
 
-test('a player alone can keep waiting, and the game starts as soon as somebody comes', async ({
+test('a player alone never starts a game, and it starts as soon as somebody comes; or they stop looking', async ({
   browser,
 }, testInfo) => {
   const ana = await guest(browser, testInfo.project.use);
   await findPlayers(ana, 'Ana', true);
-  await expect(ana.getByTestId('match-status')).toHaveText(/Looking for players/);
-  await expect(ana.getByTestId('match-status')).toHaveText('Nobody else is looking right now.', { timeout: 8_000 });
+  await expect(ana.getByTestId('match-status')).toHaveText(
+    'Looking for players… The game starts when at least one more player comes.',
+  );
+  // well past the wait, still nobody to play with: no game, and no bots
+  await ana.waitForTimeout(4_500);
+  await expect(ana.getByTestId('rack-row')).toHaveCount(0);
+  await expect(ana.getByRole('button', { name: 'Play against bots' })).toHaveCount(0);
   await testInfo.attach('alone', { body: await ana.screenshot(), contentType: 'image/png' });
-  await ana.getByRole('button', { name: 'Keep waiting' }).click();
-  await expect(ana.getByTestId('match-status')).toHaveText('Still looking. The game starts as soon as somebody comes.');
 
   const ben = await guest(browser, testInfo.project.use);
   await findPlayers(ben, 'Ben', true);
   await expect(ana.getByTestId('rack-row')).toHaveCount(2);
   await expect(ben.getByTestId('rack-row')).toHaveCount(2);
+  await expect(ben.getByTestId('seat')).toHaveCount(1);
   await expect(ben.getByTestId('seat').filter({ hasText: 'Ana' })).toHaveCount(1);
-
   await ana.context().close();
   await ben.context().close();
-});
 
-test('a player alone can play against bots instead, with the same rules; or stop looking', async ({
-  browser,
-}, testInfo) => {
-  const ana = await guest(browser, testInfo.project.use);
-  await findPlayers(ana, 'Ana', false);
-  await ana.getByRole('button', { name: 'Play against bots' }).click({ timeout: 8_000 });
-  await expect(ana).toHaveURL(/\/play\?aceHigh=0/);
-  await expect(ana.getByTestId('seat')).toHaveCount(3);
-
-  // looking again, then giving up, goes back to the first screen
-  await ana.goto('/');
-  await findPlayers(ana, 'Ana', false);
-  await ana.getByRole('button', { name: 'Stop looking' }).click();
-  await expect(ana.getByRole('heading', { name: 'Gur' })).toBeVisible();
-  // the 12-13-1 choice is remembered
-  await ana.getByRole('button', { name: 'Play online' }).click();
-  await expect(ana.getByTestId('online-setup').getByRole('switch', { name: 'Allow 12-13-1' })).not.toBeChecked();
-
-  await ana.context().close();
+  // looking, then giving up, goes back to the first screen; the 12-13-1 choice is remembered
+  const cem = await guest(browser, testInfo.project.use);
+  await findPlayers(cem, 'Cem', false);
+  await cem.getByRole('button', { name: 'Stop looking' }).click();
+  await expect(cem.getByRole('heading', { name: 'Gur' })).toBeVisible();
+  await cem.getByRole('button', { name: 'Play online' }).click();
+  await expect(cem.getByTestId('online-setup').getByRole('switch', { name: 'Allow 12-13-1' })).not.toBeChecked();
+  await cem.context().close();
 });
