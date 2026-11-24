@@ -3,7 +3,7 @@
   "main": "expo-router/entry",
   "dependencies": {
     "@gur/engine": "workspace:*",
-    "@supabase/supabase-js": "2.119.0",
+    "@supabase/supabase-js": "2.119.2",
     "expo": "~58.0.24",
     "expo-constants": "~58.0.16",
     "expo-linking": "~58.0.17",
