@@ -5,7 +5,6 @@ import type { PlayerView } from '@gur/engine';
 import type { LobbyState } from '@gur/server/protocol';
 import { LobbyRoom } from '@/components/LobbyRoom';
 import { OnlineTable } from '@/components/OnlineTable';
-import { loadBotSettings, playAddress } from '@/game/botSettings';
 import { online } from '@/online/connection';
 import { useOnline } from '@/online/useOnline';
 import { colors } from '@/theme';
@@ -44,13 +43,6 @@ export default function LobbyScreen() {
     if (!answer.ok) leave();
   };
 
-  // Nobody else came: the same rules against bots, on this device.
-  const playBots = () => {
-    const aceHigh = lobby?.settings.aceHigh ?? true;
-    void online.leave();
-    router.replace(playAddress({ aceHigh, seconds: loadBotSettings().seconds }));
-  };
-
   if (!lobby) {
     return (
       <View style={styles.center}>
@@ -82,7 +74,6 @@ export default function LobbyScreen() {
       onSay={(text) => online.say(text)}
       onReport={(chatId, why, note, alsoBlock) => online.report(chatId, why, note, alsoBlock)}
       clockOffset={clockOffset}
-      onPlayBots={playBots}
     />
   );
 }

@@ -23,8 +23,6 @@ type Props = {
   onReport?: (chatId: string, why: string, note: string, alsoBlock: boolean) => Promise<Ack>;
   /** Server clock minus this device's: for the countdown at a public table. */
   clockOffset?: number;
-  /** A public table where nobody else came: play against bots on this device instead. */
-  onPlayBots?: () => void;
 };
 
 const ROUNDS = [1, 3, 5] as const;
@@ -219,20 +217,17 @@ function FriendsLobby({ lobby, onSettings, onStart, onLeave, onInvite, chat, onS
 }
 
 /**
- * Waiting at a public table: the seats filling up, how long until the game starts (with bots in
- * the empty seats), and the code, so a friend can sit down too. A player still alone when the
- * time is up chooses to keep waiting (the game starts as soon as somebody comes) or to play
- * against bots instead.
+ * Waiting at a public table: the seats filling up, how long until the game starts, and the code,
+ * so a friend can sit down too. There are no bots online: the game starts with four players, or
+ * when the time is up with the two or three who are there. A player alone keeps waiting.
  */
-function PublicTable({ lobby, onLeave, chat, onSay, onReport, clockOffset = 0, onPlayBots }: Props) {
+function PublicTable({ lobby, onLeave, chat, onSay, onReport, clockOffset = 0 }: Props) {
   const insets = useSafeAreaInsets();
   const screen = useWindowDimensions();
   // A phone on its side: the seats on the left, the choices on the right, all on one screen.
   const low = screen.height < 520 && screen.width > screen.height;
-  const [keepWaiting, setKeepWaiting] = useState(false);
   const left = useCountdown(lobby.startsAt, clockOffset);
-  const players = lobby.members.filter((m) => !m.bot).length;
-  const alone = lobby.startsAt === null;
+  const players = lobby.members.length;
   const seconds = left === null ? '' : ` ${left} second${left === 1 ? '' : 's'}`;
 
   return (
@@ -256,16 +251,12 @@ function PublicTable({ lobby, onLeave, chat, onSay, onReport, clockOffset = 0, o
       <View style={low ? styles.halves : styles.stack}>
         <View style={low ? styles.half : styles.stack}>
           <Text style={[styles.title, low && styles.titleLow]} accessibilityRole="header">
-            {alone ? 'Nobody else yet' : 'Finding players'}
+            Finding players
           </Text>
           <Text style={styles.waiting} testID="match-status" accessibilityLiveRegion="polite">
-            {alone
-              ? keepWaiting
-                ? 'Still looking. The game starts as soon as somebody comes.'
-                : 'Nobody else is looking right now.'
-              : players >= 2
-                ? `The game starts in${seconds || ' a moment'}. Bots take the empty seats.`
-                : `Looking for players…${seconds}`}
+            {players >= 2
+              ? `The game starts in${seconds || ' a moment'}, or as soon as four are here.`
+              : 'Looking for players… The game starts when at least one more player comes.'}
           </Text>
 
           <View style={styles.card} testID="members">
@@ -303,23 +294,6 @@ function PublicTable({ lobby, onLeave, chat, onSay, onReport, clockOffset = 0, o
             {lobby.settings.aceHigh ? '12-13-1 allowed' : '12-13-1 not allowed'} · One round
           </Text>
 
-          {alone && !keepWaiting && (
-            <View style={styles.choices}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setKeepWaiting(true)}
-                style={({ pressed }) => [styles.primary, pressed && styles.pressed]}
-              >
-                <Text style={styles.primaryText}>Keep waiting</Text>
-              </Pressable>
-              {onPlayBots && (
-                <Pressable accessibilityRole="button" onPress={onPlayBots} style={styles.secondary}>
-                  <Text style={styles.secondaryText}>Play against bots</Text>
-                </Pressable>
-              )}
-            </View>
-          )}
-
           <Text
             style={styles.hint}
             testID="lobby-code"
@@ -346,7 +320,6 @@ const styles = StyleSheet.create({
   half: { flex: 1, alignItems: 'center', gap: 10 },
   halfRight: { gap: 12 },
   chatFloat: { position: 'absolute', zIndex: 2 },
-  choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center', alignItems: 'center' },
   codeInline: { color: colors.text, fontWeight: '900', letterSpacing: 2 },
   chatCorner: { alignSelf: 'flex-end', marginBottom: -12 },
   screen: { flex: 1, backgroundColor: colors.table },

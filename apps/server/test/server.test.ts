@@ -590,7 +590,7 @@ describe('playing online with strangers', () => {
     });
   });
 
-  it('starts with bots after the wait when two are there; a friend can join a waiting table by its code', async () => {
+  it('starts after the wait with the two who are there, without bots; a friend can join a waiting table by its code', async () => {
     const url = await startServer({ lobby: { botDelayMs: [5, 10], matchWaitMs: 300 } });
     const ana = await connect(url);
     const ben = await connect(url);
@@ -600,7 +600,11 @@ describe('playing online with strangers', () => {
       ok: true,
     });
     const playing = await until(ana.seen, (s) => s.game !== null);
-    expect(playing.members.map((m) => m.bot)).toEqual([false, false, true, true]);
+    expect(playing.members.map((m) => [m.name, m.bot])).toEqual([
+      ['Ana', false],
+      ['Ben', false],
+    ]);
+    expect(playing.game!.players).toHaveLength(2);
   });
 
   it('a player alone is told the wait is over, and Play again finds a new table after the game', async () => {

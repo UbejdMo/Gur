@@ -140,27 +140,27 @@ describe('waiting at a public table', () => {
       members: lobby()
         .members.slice(0, players)
         .map((m) => ({ ...m, host: false })),
-      settings: { aceHigh: false, rounds: 1, fillWithBots: true },
+      settings: { aceHigh: false, rounds: 1, fillWithBots: false },
     });
   const props = () => ({
     onSettings: jest.fn(),
     onStart: jest.fn(),
     onInvite: jest.fn(),
     onLeave: jest.fn(),
-    onPlayBots: jest.fn(),
     clockOffset: 0,
   });
 
-  it('shows the seats filling up and when the game starts, with no options and no leader', async () => {
+  it('shows the seats filling up and when the game starts, with no options, no leader and no bots', async () => {
     const p = props();
     await render(<LobbyRoom lobby={room(2, Date.now() + 20_400)} {...p} />);
     expect(screen.getByRole('header', { name: 'Finding players' })).toBeOnTheScreen();
-    expect(await screen.findByText('The game starts in 21 seconds. Bots take the empty seats.')).toBeOnTheScreen();
+    expect(await screen.findByText('The game starts in 21 seconds, or as soon as four are here.')).toBeOnTheScreen();
     expect(screen.getAllByTestId('member')).toHaveLength(2);
     expect(screen.getAllByText('Looking for a player…')).toHaveLength(2);
     expect(screen.getByTestId('table-rules')).toHaveTextContent('12-13-1 not allowed · One round');
     expect(screen.getByTestId('lobby-code')).toHaveTextContent(/type WRCCS/);
-    for (const name of ['Start the game', 'Allow 12-13-1', 'Keep waiting', 'Play against bots']) {
+    expect(screen.queryByText(/bot/i)).toBeNull();
+    for (const name of ['Start the game', 'Allow 12-13-1', 'Play against bots']) {
       expect(screen.queryByRole('button', { name })).toBeNull();
     }
     expect(screen.queryByText('Leader')).toBeNull();
@@ -168,23 +168,14 @@ describe('waiting at a public table', () => {
     expect(p.onLeave).toHaveBeenCalled();
   });
 
-  it('a player alone is still looking while the time runs', async () => {
-    await render(<LobbyRoom lobby={room(1, Date.now() + 9_900)} {...props()} />);
-    expect(await screen.findByText('Looking for players… 10 seconds')).toBeOnTheScreen();
-  });
-
-  it('when the time is up and nobody came: keep waiting, or play against bots instead', async () => {
-    const p = props();
-    await render(<LobbyRoom lobby={room(1, null)} {...p} />);
-    expect(screen.getByRole('header', { name: 'Nobody else yet' })).toBeOnTheScreen();
-    expect(screen.getByTestId('match-status')).toHaveTextContent('Nobody else is looking right now.');
-    await fireEvent.press(screen.getByRole('button', { name: 'Play against bots' }));
-    expect(p.onPlayBots).toHaveBeenCalled();
-    await fireEvent.press(screen.getByRole('button', { name: 'Keep waiting' }));
-    expect(screen.getByTestId('match-status')).toHaveTextContent(
-      'Still looking. The game starts as soon as somebody comes.',
-    );
-    expect(screen.queryByRole('button', { name: 'Keep waiting' })).toBeNull();
+  it('a player alone waits for at least one more, however long it takes', async () => {
+    for (const startsAt of [Date.now() + 9_900, null]) {
+      await render(<LobbyRoom lobby={room(1, startsAt)} {...props()} />);
+      expect(screen.getByTestId('match-status')).toHaveTextContent(
+        'Looking for players… The game starts when at least one more player comes.',
+      );
+      expect(screen.queryByRole('button', { name: 'Play against bots' })).toBeNull();
+    }
   });
 
   it('on a phone on its side, puts the seats beside the choices', async () => {
@@ -194,7 +185,7 @@ describe('waiting at a public table', () => {
       .mockReturnValue({ width: 844, height: 390, scale: 3, fontScale: 1 });
     try {
       await render(<LobbyRoom lobby={room(1, null)} {...props()} />);
-      expect(screen.getByRole('header', { name: 'Nobody else yet' })).toHaveStyle({ fontSize: 22 });
+      expect(screen.getByRole('header', { name: 'Finding players' })).toHaveStyle({ fontSize: 22 });
     } finally {
       size.mockRestore();
     }

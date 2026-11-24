@@ -62,7 +62,7 @@ export interface LobbyConfig {
   nextRoundDelayMs?: number;
   /** A public table ("Play online") for players who chose this about 12-13-1. Without it, a friends' lobby. */
   open?: { aceHigh: boolean };
-  /** How long a public table waits for four players before it starts with bots. */
+  /** How long a public table waits for four players before it starts with the two or three who are there. */
   matchWaitMs?: number;
 }
 
@@ -72,7 +72,7 @@ export const MAX_CHAT_LENGTH = 200;
 export const CHAT_KEPT = 50;
 export const CHAT_PER_10S = 5;
 export const MAX_NAME_LENGTH = 16;
-/** A public table starts with bots after this long, if at least two players are there. */
+/** A public table starts after this long with the players who are there, if there are at least two. */
 export const MATCH_WAIT_MS = 30_000;
 export const DEFAULT_SETTINGS: LobbySettings = { aceHigh: true, rounds: 1, fillWithBots: false };
 
@@ -100,7 +100,7 @@ interface Member {
 
 export class Lobby {
   readonly code: string;
-  /** A public table: no leader, one round, bots in the empty seats, and it starts by itself. */
+  /** A public table: no leader, one round, no bots, and it starts by itself. */
   readonly isOpen: boolean;
   private members: Member[] = [];
   private hostId: string | null = null;
@@ -119,7 +119,7 @@ export class Lobby {
   private chatCount = 0;
   /** When each player last spoke, for the limit on how fast they may. */
   private spoke = new Map<string, number[]>();
-  /** A public table still waiting: when it starts with bots. Null once that time has passed. */
+  /** A public table still waiting: when it starts without waiting for a fourth. Null once that time has passed. */
   private startsAt: number | null = null;
   private waitTimer: unknown = null;
 
@@ -135,7 +135,8 @@ export class Lobby {
     this.emptySince = config.scheduler.now();
     this.isOpen = config.open !== undefined;
     if (config.open) {
-      this.settings = { aceHigh: config.open.aceHigh, rounds: 1, fillWithBots: true };
+      // No bots online: only people play at a public table.
+      this.settings = { aceHigh: config.open.aceHigh, rounds: 1, fillWithBots: false };
       const wait = config.matchWaitMs ?? MATCH_WAIT_MS;
       this.startsAt = config.scheduler.now() + wait;
       this.waitTimer = config.scheduler.set(() => this.waitOver(), wait);
@@ -195,7 +196,7 @@ export class Lobby {
     return this.here >= MAX_PLAYERS || (this.startsAt === null && this.here >= 2);
   }
 
-  /** The wait at a public table is over: start with bots if somebody else is here, or keep waiting. */
+  /** The wait at a public table is over: start if somebody else is here, or keep waiting. */
   private waitOver(): void {
     this.waitTimer = null;
     this.startsAt = null;

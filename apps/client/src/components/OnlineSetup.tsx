@@ -46,7 +46,8 @@ export function OnlineSetup({ username, initialName, initialAceHigh, onFind }: P
   return (
     <View style={styles.box} testID="online-setup">
       <Text style={styles.hint}>
-        You sit at a table with up to three other players. If nobody else comes, bots take the empty seats. One round.
+        You sit at a table with up to three other players, and only people play: no bots. The game starts with at least
+        two players. One round.
       </Text>
       {username ? (
         <View style={styles.optionColumn}>
