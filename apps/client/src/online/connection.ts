@@ -147,6 +147,17 @@ export class Connection {
     return answer;
   }
 
+  /**
+   * Play online: a seat at a public table with players who made the same 12-13-1 choice (or a
+   * new table others will join). Leaves the table you were at.
+   */
+  async find(name: string, aceHigh: boolean): Promise<Ack<{ code: string }>> {
+    this.store.set(NAME_KEY, name.trim());
+    const answer = await this.request<{ code: string; memberId: string }>('find', await this.signed({ name, aceHigh }));
+    if (answer.ok) this.keep({ code: answer.code, memberId: answer.memberId });
+    return answer;
+  }
+
   /** Goes back into the lobby from an earlier visit, if it is still there. */
   async resume(): Promise<boolean> {
     const session = this.readSession();

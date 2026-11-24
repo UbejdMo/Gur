@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, Switch, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Ack, LobbySettings, LobbyState } from '@gur/server/protocol';
 import { Avatar } from './Avatar';
 import { InviteFriends } from './InviteFriends';
 import { TableChat } from './TableChat';
 import type { TableLine } from '@/online/connection';
+import { useCountdown } from '@/online/useOnlineTable';
 import { avatarColor } from './PlayerPanel';
 import { colors } from '@/theme';
 
@@ -20,6 +21,10 @@ type Props = {
   chat?: readonly TableLine[];
   onSay?: (text: string) => Promise<Ack>;
   onReport?: (chatId: string, why: string, note: string, alsoBlock: boolean) => Promise<Ack>;
+  /** Server clock minus this device's: for the countdown at a public table. */
+  clockOffset?: number;
+  /** A public table where nobody else came: play against bots on this device instead. */
+  onPlayBots?: () => void;
 };
 
 const ROUNDS = [1, 3, 5] as const;
@@ -28,8 +33,14 @@ const SEATS = 4;
 /**
  * The waiting room. Everybody sees the code and who has joined. The lobby leader (who created
  * it) also invites friends, chooses the options and starts the game; the others wait for them.
+ * A public table (Play online) has no leader: it shows how long until it starts by itself.
  */
-export function LobbyRoom({ lobby, onSettings, onStart, onLeave, onInvite, chat, onSay, onReport }: Props) {
+export function LobbyRoom(props: Props) {
+  if (props.lobby.kind === 'public') return <PublicTable {...props} />;
+  return <FriendsLobby {...props} />;
+}
+
+function FriendsLobby({ lobby, onSettings, onStart, onLeave, onInvite, chat, onSay, onReport }: Props) {
   const insets = useSafeAreaInsets();
   const [error, setError] = useState<string | null>(null);
   const [shared, setShared] = useState<'shared' | 'copied' | null>(null);
@@ -207,7 +218,136 @@ export function LobbyRoom({ lobby, onSettings, onStart, onLeave, onInvite, chat,
   );
 }
 
+/**
+ * Waiting at a public table: the seats filling up, how long until the game starts (with bots in
+ * the empty seats), and the code, so a friend can sit down too. A player still alone when the
+ * time is up chooses to keep waiting (the game starts as soon as somebody comes) or to play
+ * against bots instead.
+ */
+function PublicTable({ lobby, onLeave, chat, onSay, onReport, clockOffset = 0, onPlayBots }: Props) {
+  const insets = useSafeAreaInsets();
+  const screen = useWindowDimensions();
+  // A phone on its side: the seats on the left, the choices on the right, all on one screen.
+  const low = screen.height < 520 && screen.width > screen.height;
+  const [keepWaiting, setKeepWaiting] = useState(false);
+  const left = useCountdown(lobby.startsAt, clockOffset);
+  const players = lobby.members.filter((m) => !m.bot).length;
+  const alone = lobby.startsAt === null;
+  const seconds = left === null ? '' : ` ${left} second${left === 1 ? '' : 's'}`;
+
+  return (
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={[
+        styles.content,
+        {
+          paddingTop: (low ? 14 : 24) + insets.top,
+          paddingBottom: 24 + insets.bottom,
+          paddingLeft: 24 + insets.left,
+          paddingRight: 24 + insets.right,
+        },
+      ]}
+    >
+      {onSay && onReport && (
+        <View style={low ? [styles.chatFloat, { top: 12 + insets.top, right: 12 + insets.right }] : styles.chatCorner}>
+          <TableChat lobby={lobby} chat={chat ?? []} onSay={onSay} onReport={onReport} small={low} />
+        </View>
+      )}
+      <View style={low ? styles.halves : styles.stack}>
+        <View style={low ? styles.half : styles.stack}>
+          <Text style={[styles.title, low && styles.titleLow]} accessibilityRole="header">
+            {alone ? 'Nobody else yet' : 'Finding players'}
+          </Text>
+          <Text style={styles.waiting} testID="match-status" accessibilityLiveRegion="polite">
+            {alone
+              ? keepWaiting
+                ? 'Still looking. The game starts as soon as somebody comes.'
+                : 'Nobody else is looking right now.'
+              : players >= 2
+                ? `The game starts in${seconds || ' a moment'}. Bots take the empty seats.`
+                : `Looking for players…${seconds}`}
+          </Text>
+
+          <View style={styles.card} testID="members">
+            {Array.from({ length: SEATS }, (_, i) => {
+              const member = lobby.members[i];
+              if (!member) {
+                return (
+                  <View key={i} style={styles.member}>
+                    <View style={[styles.avatar, styles.avatarEmpty]} />
+                    <Text style={styles.empty}>Looking for a player…</Text>
+                  </View>
+                );
+              }
+              return (
+                <View key={i} style={styles.member} testID="member">
+                  <Avatar
+                    name={member.name}
+                    url={member.avatarUrl}
+                    size={36}
+                    color={avatarColor(i)}
+                    testID={`picture-${i}`}
+                  />
+                  <Text style={styles.name} numberOfLines={1}>
+                    {member.name}
+                    {i === lobby.you ? ' (you)' : ''}
+                  </Text>
+                  {!member.connected && <Text style={[styles.tag, styles.tagAway]}>Away</Text>}
+                </View>
+              );
+            })}
+          </View>
+        </View>
+        <View style={low ? [styles.half, styles.halfRight] : styles.stack}>
+          <Text style={styles.hint} testID="table-rules">
+            {lobby.settings.aceHigh ? '12-13-1 allowed' : '12-13-1 not allowed'} · One round
+          </Text>
+
+          {alone && !keepWaiting && (
+            <View style={styles.choices}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setKeepWaiting(true)}
+                style={({ pressed }) => [styles.primary, pressed && styles.pressed]}
+              >
+                <Text style={styles.primaryText}>Keep waiting</Text>
+              </Pressable>
+              {onPlayBots && (
+                <Pressable accessibilityRole="button" onPress={onPlayBots} style={styles.secondary}>
+                  <Text style={styles.secondaryText}>Play against bots</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
+
+          <Text
+            style={styles.hint}
+            testID="lobby-code"
+            accessibilityLabel={`Lobby code ${lobby.code.split('').join(' ')}`}
+          >
+            A friend can sit at this table: they tap &quot;Play with friends&quot; and type{' '}
+            <Text style={styles.codeInline}>{lobby.code}</Text>
+          </Text>
+
+          <Pressable accessibilityRole="button" onPress={onLeave} style={styles.secondary}>
+            <Text style={styles.secondaryText}>Stop looking</Text>
+          </Pressable>
+        </View>
+      </View>
+    </ScrollView>
+  );
+}
+
 const styles = StyleSheet.create({
+  title: { color: colors.text, fontSize: 28, fontWeight: '900', marginTop: 4 },
+  titleLow: { fontSize: 22, marginTop: 0 },
+  stack: { width: '100%', alignItems: 'center', gap: 14 },
+  halves: { flexDirection: 'row', width: '100%', maxWidth: 860, gap: 24, alignItems: 'center' },
+  half: { flex: 1, alignItems: 'center', gap: 10 },
+  halfRight: { gap: 12 },
+  chatFloat: { position: 'absolute', zIndex: 2 },
+  choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center', alignItems: 'center' },
+  codeInline: { color: colors.text, fontWeight: '900', letterSpacing: 2 },
   chatCorner: { alignSelf: 'flex-end', marginBottom: -12 },
   screen: { flex: 1, backgroundColor: colors.table },
   content: { alignItems: 'center', gap: 14 },

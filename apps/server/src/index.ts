@@ -19,7 +19,17 @@ const areFriends = accounts ? supabaseFriendsCheck(SUPABASE_URL, SUPABASE_KEY) :
 // The chat at a table: bad words starred out, and reports and blocks, through the same project.
 const table = accounts ? supabaseTableTools(SUPABASE_URL, SUPABASE_KEY) : undefined;
 
-const server = createGameServer({ corsOrigin: origins?.length ? origins : '*', verify, areFriends, ...table });
+// How long a public table waits for four players (30 seconds unless MATCH_WAIT_SECONDS says otherwise; tests wait less).
+const waitSeconds = Number(process.env.MATCH_WAIT_SECONDS);
+const lobby = waitSeconds > 0 ? { matchWaitMs: waitSeconds * 1000 } : undefined;
+
+const server = createGameServer({
+  corsOrigin: origins?.length ? origins : '*',
+  verify,
+  areFriends,
+  ...table,
+  lobby,
+});
 server.http.listen(port, () => {
   process.stdout.write(`Gur game server listening on port ${port} (${verify ? 'accounts on' : 'guests only'})\n`);
 });

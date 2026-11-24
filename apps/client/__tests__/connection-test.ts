@@ -46,6 +46,8 @@ const lobbyState = (over: Partial<LobbyState> = {}): LobbyState => ({
   ],
   settings: { aceHigh: true, rounds: 1, fillWithBots: false },
   game: null,
+  kind: 'friends',
+  startsAt: null,
   turnEndsAt: null,
   nextRoundAt: null,
   now: 50_000,
@@ -137,6 +139,18 @@ describe('the connection to the game server', () => {
     ]);
     socket.sent.forEach((s) => s.reply({ ok: true }));
     expect(await Promise.all(requests)).toEqual([{ ok: true }, { ok: true }, { ok: true }, { ok: true }]);
+  });
+
+  it('finds a public table: sends the name and the 12-13-1 choice (and a token), and keeps the seat', async () => {
+    const { socket, connection } = setup({}, () => Promise.resolve('token-1'));
+    const found = connection.find('Ana', false);
+    socket.fire('connect');
+    await settle();
+    expect(socket.last('find').payload).toEqual({ name: 'Ana', aceHigh: false, token: 'token-1' });
+    socket.last('find').reply({ ok: true, code: 'QWERT', memberId: 'key-9' });
+    expect(await found).toMatchObject({ ok: true, code: 'QWERT' });
+    expect(connection.hasSavedSession()).toBe(true);
+    expect(connection.savedName()).toBe('Ana');
   });
 
   it('keeps the chat at the table: history on (re)joining, new lines as they come, and none after leaving', async () => {

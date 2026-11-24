@@ -1,7 +1,7 @@
 /** All the lobbies on this server, found by their code. */
 import { randomUUID } from 'node:crypto';
 import type { Rng } from '@gur/engine';
-import { Lobby, LobbyError, realScheduler } from './lobby';
+import { Lobby, LobbyError, MAX_PLAYERS, realScheduler } from './lobby';
 import type { LobbyConfig, Scheduler } from './lobby';
 
 /** Letters and digits that are hard to mix up when read aloud or typed: no O/0, no I/1/L. */
@@ -16,7 +16,7 @@ export interface LobbiesConfig {
   /** A lobby with no connected player is thrown away after this long. */
   emptyTtlMs?: number;
   /** Passed on to every lobby (bot speed and other timings). */
-  lobby?: Pick<LobbyConfig, 'botDelayMs' | 'awayDelayMs' | 'nextRoundDelayMs'>;
+  lobby?: Pick<LobbyConfig, 'botDelayMs' | 'awayDelayMs' | 'nextRoundDelayMs' | 'matchWaitMs'>;
   /** Called when a lobby changed, so its players can be sent the new state. */
   onChange: (lobby: Lobby) => void;
 }
@@ -44,7 +44,8 @@ export class Lobbies {
     return this.byCode.size;
   }
 
-  create(): Lobby {
+  /** A new lobby; with `open`, a public table for players who made that 12-13-1 choice. */
+  create(open?: { aceHigh: boolean }): Lobby {
     this.sweep();
     if (this.byCode.size >= this.maxLobbies)
       throw new LobbyError('The server is full right now. Please try again later');
@@ -52,6 +53,7 @@ export class Lobbies {
     const lobby: Lobby = new Lobby({
       ...this.config.lobby,
       code,
+      open,
       rng: this.rng,
       scheduler: this.scheduler,
       newId: randomUUID,
@@ -65,6 +67,22 @@ export class Lobbies {
     const lobby = this.byCode.get(normalizeCode(rawCode));
     if (!lobby) throw new LobbyError('No lobby has that code. Check it and try again');
     return lobby;
+  }
+
+  /**
+   * A public table for a player who chose this about 12-13-1: the one where this account is
+   * already waiting (from another device), or the one with the most players waiting (the oldest
+   * of those), or null when no table is waiting. A table where nobody is connected is skipped.
+   */
+  findOpen(aceHigh: boolean, userId?: string): Lobby | null {
+    let best: Lobby | null = null;
+    for (const lobby of this.byCode.values()) {
+      if (!lobby.isOpen || !lobby.waiting || lobby.aceHigh !== aceHigh) continue;
+      if (userId && lobby.seatOfAccount(userId)) return lobby;
+      if (lobby.size >= MAX_PLAYERS || lobby.here === 0) continue;
+      if (!best || lobby.here > best.here) best = lobby;
+    }
+    return best;
   }
 
   /** Throws away lobbies everybody left, and lobbies nobody has been connected to for a long time. */

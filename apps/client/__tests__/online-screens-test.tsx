@@ -21,6 +21,7 @@ jest.mock('@/online/connection', () => ({
     hasSavedSession: jest.fn(() => false),
     create: jest.fn(),
     join: jest.fn(),
+    find: jest.fn(),
   },
 }));
 
@@ -29,7 +30,13 @@ const mocks = () => ({
   params: (jest.requireMock('expo-router') as { useLocalSearchParams: jest.Mock }).useLocalSearchParams,
   online: (
     jest.requireMock('@/online/connection') as {
-      online: { savedName: jest.Mock; hasSavedSession: jest.Mock; create: jest.Mock; join: jest.Mock };
+      online: {
+        savedName: jest.Mock;
+        hasSavedSession: jest.Mock;
+        create: jest.Mock;
+        join: jest.Mock;
+        find: jest.Mock;
+      };
     }
   ).online,
 });
@@ -66,6 +73,8 @@ function lobby(over: Partial<LobbyState> = {}): LobbyState {
     })),
     settings: { aceHigh: true, rounds: 1, fillWithBots: false },
     game: null,
+    kind: 'friends',
+    startsAt: null,
     turnEndsAt: null,
     nextRoundAt: null,
     now: Date.now(),
@@ -78,6 +87,117 @@ describe('Home', () => {
     await render(<Home />);
     await fireEvent.press(screen.getByRole('button', { name: 'Play with friends' }));
     expect(mocks().router.push).toHaveBeenCalledWith('/friends');
+  });
+});
+
+describe('Play online', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('asks a guest for a name and 12-13-1, finds a table, and remembers the choice', async () => {
+    mocks().online.find.mockResolvedValue({ ok: true, code: 'QWERT' });
+    await render(<Home />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Play online' }));
+    const setup = within(screen.getByTestId('online-setup'));
+    expect(setup.getByLabelText('Your name').props.value).toBe('Ana');
+    expect(setup.getByRole('switch', { name: 'Allow 12-13-1' }).props.value).toBe(true);
+    await fireEvent(setup.getByRole('switch', { name: 'Allow 12-13-1' }), 'valueChange', false);
+    await fireEvent.press(setup.getByRole('button', { name: 'Find players' }));
+    expect(mocks().online.find).toHaveBeenCalledWith('Ana', false);
+    expect(mocks().router.push).toHaveBeenCalledWith('/lobby');
+    expect(JSON.parse(localStorage.getItem('gur.online')!)).toEqual({ aceHigh: false });
+  });
+
+  it("needs a name, and shows the server's reason when it refuses", async () => {
+    mocks().online.find.mockResolvedValue({ ok: false, error: 'The server is full right now. Please try again later' });
+    await render(<Home />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Play online' }));
+    await fireEvent.changeText(screen.getByLabelText('Your name'), '  ');
+    await fireEvent.press(screen.getByRole('button', { name: 'Find players' }));
+    expect(screen.getByTestId('online-error')).toHaveTextContent('Please choose a name');
+    expect(mocks().online.find).not.toHaveBeenCalled();
+    await fireEvent.changeText(screen.getByLabelText('Your name'), 'Ana');
+    await fireEvent.press(screen.getByRole('button', { name: 'Find players' }));
+    expect(screen.getByTestId('online-error')).toHaveTextContent(
+      'The server is full right now. Please try again later',
+    );
+    expect(mocks().router.push).not.toHaveBeenCalled();
+  });
+
+  it('remembers 12-13-1 off from an earlier visit', async () => {
+    localStorage.setItem('gur.online', JSON.stringify({ aceHigh: false }));
+    await render(<Home />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Play online' }));
+    expect(screen.getByRole('switch', { name: 'Allow 12-13-1' }).props.value).toBe(false);
+  });
+});
+
+describe('waiting at a public table', () => {
+  const room = (players: number, startsAt: number | null) =>
+    lobby({
+      kind: 'public',
+      startsAt,
+      you: 0,
+      members: lobby()
+        .members.slice(0, players)
+        .map((m) => ({ ...m, host: false })),
+      settings: { aceHigh: false, rounds: 1, fillWithBots: true },
+    });
+  const props = () => ({
+    onSettings: jest.fn(),
+    onStart: jest.fn(),
+    onInvite: jest.fn(),
+    onLeave: jest.fn(),
+    onPlayBots: jest.fn(),
+    clockOffset: 0,
+  });
+
+  it('shows the seats filling up and when the game starts, with no options and no leader', async () => {
+    const p = props();
+    await render(<LobbyRoom lobby={room(2, Date.now() + 20_400)} {...p} />);
+    expect(screen.getByRole('header', { name: 'Finding players' })).toBeOnTheScreen();
+    expect(await screen.findByText('The game starts in 21 seconds. Bots take the empty seats.')).toBeOnTheScreen();
+    expect(screen.getAllByTestId('member')).toHaveLength(2);
+    expect(screen.getAllByText('Looking for a player…')).toHaveLength(2);
+    expect(screen.getByTestId('table-rules')).toHaveTextContent('12-13-1 not allowed · One round');
+    expect(screen.getByTestId('lobby-code')).toHaveTextContent(/type WRCCS/);
+    for (const name of ['Start the game', 'Allow 12-13-1', 'Keep waiting', 'Play against bots']) {
+      expect(screen.queryByRole('button', { name })).toBeNull();
+    }
+    expect(screen.queryByText('Leader')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Stop looking' }));
+    expect(p.onLeave).toHaveBeenCalled();
+  });
+
+  it('a player alone is still looking while the time runs', async () => {
+    await render(<LobbyRoom lobby={room(1, Date.now() + 9_900)} {...props()} />);
+    expect(await screen.findByText('Looking for players… 10 seconds')).toBeOnTheScreen();
+  });
+
+  it('when the time is up and nobody came: keep waiting, or play against bots instead', async () => {
+    const p = props();
+    await render(<LobbyRoom lobby={room(1, null)} {...p} />);
+    expect(screen.getByRole('header', { name: 'Nobody else yet' })).toBeOnTheScreen();
+    expect(screen.getByTestId('match-status')).toHaveTextContent('Nobody else is looking right now.');
+    await fireEvent.press(screen.getByRole('button', { name: 'Play against bots' }));
+    expect(p.onPlayBots).toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Keep waiting' }));
+    expect(screen.getByTestId('match-status')).toHaveTextContent(
+      'Still looking. The game starts as soon as somebody comes.',
+    );
+    expect(screen.queryByRole('button', { name: 'Keep waiting' })).toBeNull();
+  });
+
+  it('on a phone on its side, puts the seats beside the choices', async () => {
+    const rn = jest.requireActual<typeof ReactNative>('react-native');
+    const size = jest
+      .spyOn(rn, 'useWindowDimensions')
+      .mockReturnValue({ width: 844, height: 390, scale: 3, fontScale: 1 });
+    try {
+      await render(<LobbyRoom lobby={room(1, null)} {...props()} />);
+      expect(screen.getByRole('header', { name: 'Nobody else yet' })).toHaveStyle({ fontSize: 22 });
+    } finally {
+      size.mockRestore();
+    }
   });
 });
 
@@ -369,6 +489,31 @@ describe('the online table', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('after the round at a public table', () => {
+  it('offers to play again at a new table, or to leave; nobody waits for a leader', async () => {
+    let g = game(1);
+    while (g.status === 'playing') g = timeoutMove(g);
+    const onPlayAgain = jest.fn();
+    const onLeave = jest.fn();
+    const room = lobby({ game: playerView(g, 0) }) as LobbyState & { game: PlayerView };
+    await render(
+      <OnlineTable
+        lobby={{ ...room, kind: 'public', members: room.members.map((m) => ({ ...m, host: false })) }}
+        connection={{ act: jest.fn(), next: jest.fn() } as unknown as Connection}
+        clockOffset={0}
+        status="online"
+        onLeave={onLeave}
+        onPlayAgain={onPlayAgain}
+      />,
+    );
+    expect(screen.queryByText(/Waiting for/)).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Play again' }));
+    expect(onPlayAgain).toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Leave' }));
+    expect(onLeave).toHaveBeenCalled();
   });
 });
 

@@ -11,7 +11,7 @@ import { Server } from 'socket.io';
 import type { Socket } from 'socket.io';
 import { Lobbies } from './lobbies';
 import type { LobbiesConfig } from './lobbies';
-import { LobbyError } from './lobby';
+import { LobbyError, cleanName } from './lobby';
 import type { Lobby, SignedInPlayer } from './lobby';
 import type { Ack, ClientToServerEvents, ServerToClientEvents } from './protocol';
 
@@ -190,6 +190,22 @@ export function createGameServer(config: GameServerConfig = {}): GameServer {
         // (they opened the game on another device, or lost their key to the lobby).
         const seat = player ? lobby.seatOfAccount(player.userId) : null;
         if (seat !== socket.data.memberId) release(socket, true);
+        const memberId = seat ?? lobby.join(request?.name, player);
+        sit(socket, lobby, memberId);
+        return { code: lobby.code, memberId };
+      }),
+    );
+
+    socket.on('find', (request, reply) =>
+      answer(reply, async () => {
+        const aceHigh = request?.aceHigh;
+        if (typeof aceHigh !== 'boolean') throw new LobbyError('Choose whether 12-13-1 is allowed');
+        const player = await identify(request?.token);
+        // A guest's name is checked before they leave the table they were at.
+        if (!player) cleanName(request?.name);
+        release(socket, true);
+        const lobby = lobbies.findOpen(aceHigh, player?.userId) ?? lobbies.create({ aceHigh });
+        const seat = player ? lobby.seatOfAccount(player.userId) : null;
         const memberId = seat ?? lobby.join(request?.name, player);
         sit(socket, lobby, memberId);
         return { code: lobby.code, memberId };

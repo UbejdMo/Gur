@@ -3,22 +3,28 @@ import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-n
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { tileId } from '@gur/engine';
+import { useAccount } from '@/account';
 import { BotsSetup } from '@/components/BotsSetup';
+import { OnlineSetup } from '@/components/OnlineSetup';
 import { PageLink } from '@/components/PageLink';
 import { PlayCard } from '@/components/PlayCard';
 import { Popover } from '@/components/Popover';
 import { TopBar } from '@/components/TopBar';
 import { loadBotSettings, playAddress, saveBotSettings } from '@/game/botSettings';
 import { inPhoneBrowser, useFullscreen } from '@/hooks/useFullscreen';
+import { online } from '@/online/connection';
+import { loadOnlineAceHigh, saveOnlineAceHigh } from '@/online/onlineSettings';
 import { colors } from '@/theme';
 
 // Bots play a run with the joker in it; friends sit together like a set of one number.
 const BOT_TILES = [tileId('blue', 9), 104, tileId('blue', 11)] as const;
 const FRIEND_TILES = [tileId('red', 7), tileId('yellow', 7), tileId('black', 7)] as const;
+// Strangers from everywhere: one of each colour, a pair and a stranger.
+const ONLINE_TILES = [tileId('yellow', 1), tileId('blue', 1), tileId('red', 13)] as const;
 
 /**
- * The first screen: the name of the game and two big stones, one for playing against bots and
- * one for playing with friends. Your profile, friends and messages are at the top right.
+ * The first screen: the name of the game and three big stones: playing against bots, with
+ * friends, and online with other players. Your profile, friends and messages are at the top right.
  */
 export default function Home() {
   const insets = useSafeAreaInsets();
@@ -28,13 +34,19 @@ export default function Home() {
   const [cramped] = useState(inPhoneBrowser);
   const [botsOpen, setBotsOpen] = useState(false);
   const [botSettings] = useState(loadBotSettings);
+  const [onlineOpen, setOnlineOpen] = useState(false);
+  const [onlineAceHigh] = useState(loadOnlineAceHigh);
+  const { profile } = useAccount();
 
-  // Side by side whenever both fit; one above the other on a very narrow screen.
+  // Three in a row where they fit; two and one below on an upright phone; one under the other
+  // on a very narrow screen.
   const room = Math.min(screen.width, 960) - insets.left - insets.right - 40;
-  const sideBySide = room >= 320;
-  // A phone held sideways is short: a smaller title and smaller stones, so both fit without scrolling.
+  const perRow = room >= 3 * 170 + 2 * GAP ? 3 : room >= 320 ? 2 : 1;
+  // A phone held sideways is short: a smaller title and smaller stones, so all fit without scrolling.
   const short = screen.height < 520;
-  const cardWidth = Math.floor(sideBySide ? Math.min(short ? 210 : 250, (room - 28) / 2) : Math.min(300, room));
+  const cardWidth = Math.floor(
+    perRow === 1 ? Math.min(300, room) : Math.min(short ? 200 : 250, (room - GAP * (perRow - 1)) / perRow),
+  );
 
   return (
     <ScrollView
@@ -59,7 +71,7 @@ export default function Home() {
         <Text style={styles.subtitle}>Tile rummy, the Kosovo way</Text>
       </View>
 
-      <View style={[styles.cards, !sideBySide && styles.cardsStacked]}>
+      <View style={[styles.cards, perRow === 1 && styles.cardsStacked, perRow === 2 && styles.cardsTwo]}>
         <PlayCard
           title="Play against bots"
           subtitle="Three bots, on this device"
@@ -76,6 +88,14 @@ export default function Home() {
           width={cardWidth}
           onPress={() => router.push('/friends')}
         />
+        <PlayCard
+          title="Play online"
+          subtitle="Meet other players"
+          tiles={ONLINE_TILES}
+          tilt={-3}
+          width={cardWidth}
+          onPress={() => setOnlineOpen(true)}
+        />
       </View>
 
       {cramped && !fullscreen.active && (
@@ -88,7 +108,8 @@ export default function Home() {
 
       <View style={styles.footer}>
         <Text style={styles.about}>
-          A free tile rummy game for 2 to 4 players. Play against bots, or with friends by lobby code.
+          A free tile rummy game for 2 to 4 players. Play against bots, with friends by lobby code, or online with other
+          players.
         </Text>
         <View style={styles.links}>
           <PageLink page="privacy.html">Privacy policy</PageLink>
@@ -107,9 +128,28 @@ export default function Home() {
           }}
         />
       </Popover>
+
+      <Popover title="Play online" place="centre" open={onlineOpen} onClose={() => setOnlineOpen(false)}>
+        <OnlineSetup
+          username={profile?.username ?? null}
+          initialName={online.savedName()}
+          initialAceHigh={onlineAceHigh}
+          onFind={async (name, aceHigh) => {
+            saveOnlineAceHigh(aceHigh);
+            const answer = await online.find(name, aceHigh);
+            if (answer.ok) {
+              setOnlineOpen(false);
+              router.push('/lobby');
+            }
+            return answer;
+          }}
+        />
+      </Popover>
     </ScrollView>
   );
 }
+
+const GAP = 28;
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.table },
@@ -120,7 +160,8 @@ const styles = StyleSheet.create({
   titleShort: { fontSize: 46 },
   title: { fontSize: 72, fontWeight: '900', color: colors.text, letterSpacing: 3 },
   subtitle: { fontSize: 16, color: colors.textMuted },
-  cards: { flexDirection: 'row', gap: 28, justifyContent: 'center', alignItems: 'flex-start', paddingVertical: 8 },
+  cards: { flexDirection: 'row', gap: GAP, justifyContent: 'center', alignItems: 'flex-start', paddingVertical: 8 },
+  cardsTwo: { flexWrap: 'wrap', rowGap: 18 },
   cardsStacked: { flexDirection: 'column', alignItems: 'center' },
   note: { fontSize: 13, color: colors.textMuted, textAlign: 'center', maxWidth: 340 },
   footer: { alignItems: 'center', gap: 6, marginTop: 'auto', maxWidth: 360 },

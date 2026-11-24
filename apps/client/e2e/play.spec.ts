@@ -49,8 +49,8 @@ test('home starts a game against bots, with the options asked first; the game ca
 }, testInfo) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Gur' })).toBeVisible();
-  // the two ways to play fit on the first screen without scrolling
-  for (const name of ['Play against bots', 'Play with friends']) {
+  // the three ways to play fit on the first screen without scrolling
+  for (const name of ['Play against bots', 'Play with friends', 'Play online']) {
     await expect(page.getByRole('button', { name })).toBeInViewport({ ratio: 1 });
   }
   await testInfo.attach('home', { body: await page.screenshot(), contentType: 'image/png' });
