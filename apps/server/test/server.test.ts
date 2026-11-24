@@ -561,7 +561,8 @@ describe('playing online with strangers', () => {
     if (!first.ok) throw new Error(first.error);
     const waiting = await until(ana!.seen, (s) => s.code === first.code);
     expect(waiting).toMatchObject({ kind: 'public', game: null, settings: { aceHigh: false, rounds: 1 } });
-    expect(waiting.startsAt).toBeGreaterThan(waiting.now);
+    // alone: no clock until somebody else comes
+    expect(waiting.startsAt).toBeNull();
 
     // a player who wants 12-13-1 goes to another table
     const other = await find(eda!, { name: 'Eda', aceHigh: true });
@@ -574,7 +575,9 @@ describe('playing online with strangers', () => {
     ] as const) {
       expect(await find(client, { name, aceHigh: false })).toMatchObject({ ok: true, code: first.code });
     }
-    expect((await until(ana!.seen, (s) => s.members.length === 3)).game).toBeNull();
+    const three = await until(ana!.seen, (s) => s.members.length === 3);
+    expect(three.game).toBeNull();
+    expect(three.startsAt).toBeGreaterThan(three.now);
     expect(await find(dua!, { name: 'Dua', aceHigh: false })).toMatchObject({ ok: true, code: first.code });
     const playing = await until(ana!.seen, (s) => s.game !== null);
     expect(playing.members.map((m) => [m.name, m.bot])).toEqual([

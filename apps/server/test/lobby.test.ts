@@ -552,7 +552,8 @@ describe('a public table (Play online)', () => {
     const ana = lobby.join('Ana');
     const state = lobby.stateFor(ana);
     expect(state).toMatchObject({ kind: 'public', settings: { aceHigh: true, rounds: 1, fillWithBots: false } });
-    expect(state.startsAt).toBe(Date.now() + 30_000);
+    // alone, there is no clock yet
+    expect(state.startsAt).toBeNull();
     expect(state.members[0]!.host).toBe(false);
     // nobody changes the options or starts it by hand
     expect(() => lobby.setSettings(ana, { rounds: 3 })).toThrow('This table starts by itself');
@@ -597,16 +598,33 @@ describe('a public table (Play online)', () => {
     expect(state.game!.settings.rounds).toBe(1);
   });
 
-  it('a player alone never starts: they keep waiting, and the game starts as soon as somebody comes', () => {
+  it('a player alone never starts; when somebody comes, the 30 seconds start then, so others can still sit down', () => {
     const { lobby } = open();
     const ana = lobby.join('Ana');
-    vi.advanceTimersByTime(30_000);
+    vi.advanceTimersByTime(5 * 60_000);
     expect(lobby.stateFor(ana)).toMatchObject({ game: null, startsAt: null });
-    vi.advanceTimersByTime(60_000);
-    expect(lobby.stateFor(ana).game).toBeNull();
+    // Ben comes after five minutes: the game does not start at once
     lobby.join('Ben');
+    expect(lobby.stateFor(ana)).toMatchObject({ game: null, startsAt: Date.now() + 30_000 });
+    vi.advanceTimersByTime(20_000);
+    // Cem sits down in time; the clock goes on, it does not start over
+    lobby.join('Cem');
+    expect(lobby.stateFor(ana)).toMatchObject({ game: null, startsAt: Date.now() + 10_000 });
+    vi.advanceTimersByTime(9_999);
+    expect(lobby.stateFor(ana).game).toBeNull();
+    vi.advanceTimersByTime(1);
     expect(lobby.stateFor(ana).game).not.toBeNull();
-    expect(lobby.stateFor(ana).members.map((m) => m.name)).toEqual(['Ana', 'Ben']);
+    expect(lobby.stateFor(ana).members.map((m) => m.name)).toEqual(['Ana', 'Ben', 'Cem']);
+  });
+
+  it('a fourth player starts the game at once, however much time is left', () => {
+    const { lobby } = open();
+    const ana = lobby.join('Ana');
+    lobby.join('Ben');
+    lobby.join('Cem');
+    vi.advanceTimersByTime(3_000);
+    lobby.join('Dua');
+    expect(lobby.stateFor(ana).game).not.toBeNull();
   });
 
   it('players whose app dropped before the start lose their seat; one who comes back in time keeps it', () => {
@@ -625,15 +643,24 @@ describe('a public table (Play online)', () => {
     expect(() => lobby.stateFor(ben)).toThrow('You are not in this lobby');
   });
 
-  it('one player alone whose friend reconnects after the wait starts at once', () => {
+  it('the clock stops when the table is down to one player, and starts again from the beginning', () => {
     const { lobby } = open();
     const ana = lobby.join('Ana');
     const ben = lobby.join('Ben');
+    vi.advanceTimersByTime(25_000);
     lobby.setConnected(ben, false);
-    vi.advanceTimersByTime(30_000);
+    expect(lobby.stateFor(ana).startsAt).toBeNull();
+    vi.advanceTimersByTime(60_000);
     expect(lobby.stateFor(ana).game).toBeNull();
     lobby.setConnected(ben, true);
-    expect(lobby.stateFor(ana).game).not.toBeNull();
+    expect(lobby.stateFor(ana).startsAt).toBe(Date.now() + 30_000);
+    // and the same when somebody leaves
+    const cem = lobby.join('Cem');
+    lobby.leave(cem);
+    lobby.leave(ben);
+    expect(lobby.stateFor(ana)).toMatchObject({ game: null, startsAt: null });
+    vi.advanceTimersByTime(60_000);
+    expect(lobby.stateFor(ana).game).toBeNull();
   });
 
   it('a player who leaves before the start frees their seat; the last one out closes the table', () => {

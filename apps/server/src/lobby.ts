@@ -62,7 +62,7 @@ export interface LobbyConfig {
   nextRoundDelayMs?: number;
   /** A public table ("Play online") for players who chose this about 12-13-1. Without it, a friends' lobby. */
   open?: { aceHigh: boolean };
-  /** How long a public table waits for four players before it starts with the two or three who are there. */
+  /** How long a public table waits, once two players are there, for a third and fourth before it starts. */
   matchWaitMs?: number;
 }
 
@@ -72,7 +72,7 @@ export const MAX_CHAT_LENGTH = 200;
 export const CHAT_KEPT = 50;
 export const CHAT_PER_10S = 5;
 export const MAX_NAME_LENGTH = 16;
-/** A public table starts after this long with the players who are there, if there are at least two. */
+/** A public table starts this long after the second player sat down, with the two or three who are there. */
 export const MATCH_WAIT_MS = 30_000;
 export const DEFAULT_SETTINGS: LobbySettings = { aceHigh: true, rounds: 1, fillWithBots: false };
 
@@ -137,9 +137,6 @@ export class Lobby {
     if (config.open) {
       // No bots online: only people play at a public table.
       this.settings = { aceHigh: config.open.aceHigh, rounds: 1, fillWithBots: false };
-      const wait = config.matchWaitMs ?? MATCH_WAIT_MS;
-      this.startsAt = config.scheduler.now() + wait;
-      this.waitTimer = config.scheduler.set(() => this.waitOver(), wait);
     }
   }
 
@@ -163,8 +160,7 @@ export class Lobby {
     };
     this.members.push(member);
     if (!this.isOpen) this.hostId ??= member.id;
-    if (this.readyToStart()) this.begin();
-    else this.changed();
+    this.settle();
     return member.id;
   }
 
@@ -190,19 +186,34 @@ export class Lobby {
     return this.humans().filter((m) => m.connected).length;
   }
 
-  /** A public table starts when four players are here, or, once the wait is over, when two are. */
-  private readyToStart(): boolean {
-    if (!this.isOpen || this.game) return false;
-    return this.here >= MAX_PLAYERS || (this.startsAt === null && this.here >= 2);
+  /**
+   * After somebody sat down, left, dropped or came back. At a public table that is waiting: four
+   * players start at once; with two or three the clock runs, from when the second player came
+   * (however long the first waited alone), so a third or fourth can still sit down; with one the
+   * clock stops, and starts again when somebody else comes.
+   */
+  private settle(): void {
+    if (this.isOpen && !this.game) {
+      if (this.here >= MAX_PLAYERS) return this.begin();
+      if (this.here >= 2 && this.waitTimer === null) {
+        const wait = this.config.matchWaitMs ?? MATCH_WAIT_MS;
+        this.startsAt = this.config.scheduler.now() + wait;
+        this.waitTimer = this.config.scheduler.set(() => this.waitOver(), wait);
+      } else if (this.here < 2) {
+        this.clearWaitTimer();
+        this.startsAt = null;
+      }
+    }
+    this.changed();
   }
 
-  /** The wait at a public table is over: start if somebody else is here, or keep waiting. */
+  /** The time at a public table is up: the two or three players who are here play. */
   private waitOver(): void {
     this.waitTimer = null;
-    this.startsAt = null;
     if (this.game) return;
-    if (this.readyToStart()) this.begin();
-    else this.changed();
+    if (this.here >= 2) return this.begin();
+    this.startsAt = null;
+    this.changed();
   }
 
   /**
@@ -235,8 +246,7 @@ export class Lobby {
     const member = this.member(memberId);
     if (member.connected === connected) return;
     member.connected = connected;
-    if (this.readyToStart()) this.begin();
-    else this.changed();
+    this.settle();
   }
 
   /** The player goes for good. Before the game their place is freed; during it the game plays on for them. */
@@ -251,7 +261,7 @@ export class Lobby {
       this.members = this.members.filter((m) => m !== member);
     }
     if (this.hostId === memberId) this.hostId = this.humans()[0]?.id ?? null;
-    this.changed();
+    this.settle();
   }
 
   /** Nobody is left who could come back: the lobby can be thrown away. */

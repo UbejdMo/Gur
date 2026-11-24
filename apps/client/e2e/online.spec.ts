@@ -86,7 +86,7 @@ test('players who made the same 12-13-1 choice are seated together, and two can 
   for (const page of [ana, ben, cem]) await page.context().close();
 });
 
-test('a player alone never starts a game, and it starts as soon as somebody comes; or they stop looking', async ({
+test('a player alone never starts a game; when somebody comes, the wait starts then; or they stop looking', async ({
   browser,
 }, testInfo) => {
   const ana = await guest(browser, testInfo.project.use);
@@ -100,9 +100,12 @@ test('a player alone never starts a game, and it starts as soon as somebody come
   await expect(ana.getByRole('button', { name: 'Play against bots' })).toHaveCount(0);
   await testInfo.attach('alone', { body: await ana.screenshot(), contentType: 'image/png' });
 
+  // Ben comes: the game does not start at once, the wait (3 seconds in these tests) starts now
   const ben = await guest(browser, testInfo.project.use);
   await findPlayers(ben, 'Ben', true);
-  await expect(ana.getByTestId('rack-row')).toHaveCount(2);
+  await expect(ana.getByTestId('match-status')).toContainText('The game starts in');
+  await expect(ana.getByTestId('rack-row')).toHaveCount(0);
+  await expect(ana.getByTestId('rack-row')).toHaveCount(2, { timeout: 10_000 });
   await expect(ben.getByTestId('rack-row')).toHaveCount(2);
   await expect(ben.getByTestId('seat')).toHaveCount(1);
   await expect(ben.getByTestId('seat').filter({ hasText: 'Ana' })).toHaveCount(1);
