@@ -23,14 +23,14 @@
     "socket.io": "4.8.4"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.16",
-    "@electric-sql/pglite-socket": "0.2.19",
+    "@electric-sql/pglite": "0.5.17",
+    "@electric-sql/pglite-socket": "0.2.20",
     "@types/node": "22.20.5",
-    "@vitest/coverage-v8": "5.1.0",
+    "@vitest/coverage-v8": "5.1.1",
     "esbuild": "0.28.2",
     "socket.io-client": "4.8.4",
     "tsx": "4.23.15",
     "vite": "8.3.8",
-    "vitest": "5.1.0"
+    "vitest": "5.1.1"
   }
 }
