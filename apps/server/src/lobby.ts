@@ -56,7 +56,7 @@ export interface LobbyConfig {
   onChange: () => void;
   /** How long a bot takes over its turn: [shortest, longest] in milliseconds. */
   botDelayMs?: readonly [number, number];
-  /** How long before the game plays for a player who has left. */
+  /** How long before the game plays for a player who has left, or whose app dropped, while others wait. */
   awayDelayMs?: number;
   /** How long the results stay up before the next round starts by itself. */
   nextRoundDelayMs?: number;
@@ -246,6 +246,16 @@ export class Lobby {
     const member = this.member(memberId);
     if (member.connected === connected) return;
     member.connected = connected;
+    // Back during a turn the game was about to play for them: their own clock starts again.
+    const game = this.game;
+    if (
+      connected &&
+      game?.status === 'playing' &&
+      this.members[game.round.current] === member &&
+      this.turnEndsAt === null
+    ) {
+      this.turnKey = null;
+    }
     this.settle();
   }
 
@@ -481,7 +491,10 @@ export class Lobby {
             () => this.autoPlay(botTurn),
             min + this.config.rng() * (max - min),
           );
-        } else if (member.left) {
+        } else if (member.left || (!member.connected && this.humans().some((m) => m.connected))) {
+          // Gone (left, or the app dropped before this turn began) while others are playing: the game
+          // plays for them at once rather than making everybody wait out their clock. A player who
+          // drops during their own turn keeps what is left of it, in case it was only a blip.
           this.turnTimer = this.config.scheduler.set(() => this.autoPlay(timeoutMove), this.awayDelayMs);
         } else {
           const ms = turnSeconds(game) * 1000;
