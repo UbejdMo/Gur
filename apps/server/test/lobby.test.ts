@@ -361,6 +361,46 @@ describe('dropping out', () => {
     expect(lobby.stateFor(ana).game!.round.current).toBe(0);
   });
 
+  it('a player whose app dropped is played for quickly while the others wait; back, they get their clock again', () => {
+    const { lobby, ana, ben, ids } = startedGame({ awayDelayMs: 1000 });
+    // Ben drops during his own turn: he keeps what is left of it, in case it was a blip
+    while (lobby.stateFor(ana).game!.round.current !== 1) playTurn(lobby, ids);
+    const ends = lobby.stateFor(ana).turnEndsAt!;
+    vi.advanceTimersByTime(5_000);
+    lobby.setConnected(ben, false);
+    expect(lobby.stateFor(ana).turnEndsAt).toBe(ends);
+    vi.advanceTimersByTime(1_100);
+    expect(lobby.stateFor(ana).game!.round.current).toBe(1);
+    vi.advanceTimersByTime(ends - Date.now() + 100);
+    expect(lobby.stateFor(ana).game!.round.current).toBe(0);
+    // his next turns, while he is gone, take a second, not the full clock
+    playTurn(lobby, [ana]);
+    expect(lobby.stateFor(ana).game!.round.current).toBe(1);
+    expect(lobby.stateFor(ana).turnEndsAt).toBeNull();
+    vi.advanceTimersByTime(1_100);
+    expect(lobby.stateFor(ana).game!.round.current).toBe(0);
+    // back just as his turn begins: his own clock again, nothing is played for him
+    playTurn(lobby, [ana]);
+    lobby.setConnected(ben, true);
+    expect(lobby.stateFor(ben).turnEndsAt).toBe(Date.now() + 15_000);
+    vi.advanceTimersByTime(5_000);
+    expect(lobby.stateFor(ben).game!.round.current).toBe(1);
+  });
+
+  it('with nobody connected at the table, the game does not race on: it keeps the normal clock', () => {
+    const { lobby, ana, ben } = startedGame({ awayDelayMs: 1000 });
+    lobby.setConnected(ana, false);
+    lobby.setConnected(ben, false);
+    const first = lobby.stateFor(ana).game!.round.turn;
+    vi.advanceTimersByTime(14_000);
+    expect(lobby.stateFor(ana).game!.round.turn).toBe(first);
+    vi.advanceTimersByTime(1_100);
+    expect(lobby.stateFor(ana).game!.round.turn).toBe(first + 1);
+    // and the next turn has the full clock too
+    vi.advanceTimersByTime(13_000);
+    expect(lobby.stateFor(ana).game!.round.turn).toBe(first + 1);
+  });
+
   it('when the host leaves a game, the next player becomes the host; when all leave, the lobby is done', () => {
     const { lobby, ana, ben } = startedGame();
     lobby.leave(ana);
