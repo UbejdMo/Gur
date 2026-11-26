@@ -21,6 +21,7 @@ import type {
 } from '@gur/server/protocol';
 import { account } from '@/account';
 import { serverUrl } from './config';
+import { strings, translateRefusal } from '@/i18n';
 
 /** 'idle': not in use. 'connecting': first contact. 'online': connected. 'offline': lost, trying again. */
 export type OnlineStatus = 'idle' | 'connecting' | 'online' | 'offline';
@@ -86,7 +87,6 @@ const SESSION_KEY = 'gur.session';
 const NAME_KEY = 'gur.name';
 /** A sleeping server takes about a minute to wake, so requests wait longer than that. */
 const ANSWER_TIMEOUT_MS = 90_000;
-const NO_ANSWER = 'The server did not answer. Check your connection and try again';
 
 export class Connection {
   private socket: SocketLike | null = null;
@@ -233,7 +233,7 @@ export class Connection {
 
   /** Tells the server you just wrote to a friend (their account id), so their apps show it at once. */
   async poke(to: string): Promise<Ack> {
-    if (!this.present) return { ok: false, error: 'Sign in first' };
+    if (!this.present) return { ok: false, error: strings().common.signInFirst };
     return this.request('poke', await this.signed({ to }));
   }
 
@@ -257,7 +257,7 @@ export class Connection {
       const session = this.session;
       if (session && this.snapshot.lobby) {
         socket.emit('rejoin', session, (answer: Ack) => {
-          if (!answer.ok && this.session === session) this.forget('You are no longer in that lobby');
+          if (!answer.ok && this.session === session) this.forget(strings().connection.noLongerIn);
         });
       }
     });
@@ -305,10 +305,11 @@ export class Connection {
   private request<T = unknown>(event: keyof ClientToServerEvents, payload?: unknown): Promise<Ack<T>> {
     const socket = this.open();
     return new Promise((resolve) => {
-      const timer = setTimeout(() => resolve({ ok: false, error: NO_ANSWER }), ANSWER_TIMEOUT_MS);
+      const timer = setTimeout(() => resolve({ ok: false, error: strings().connection.noAnswer }), ANSWER_TIMEOUT_MS);
       const reply = (answer: Ack<T>) => {
         clearTimeout(timer);
-        resolve(answer);
+        // The server writes its refusals in English: show them in the player's language.
+        resolve(answer.ok ? answer : { ok: false, error: translateRefusal(answer.error) });
       };
       if (payload === undefined) socket.emit(event, reply);
       else socket.emit(event, payload, reply);

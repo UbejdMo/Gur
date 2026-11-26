@@ -4,6 +4,7 @@ import type { Ack, LobbyState } from '@gur/server/protocol';
 import { useAccount, useFriends } from '@/account';
 import { Avatar } from './Avatar';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 type Props = {
   lobby: LobbyState;
@@ -18,6 +19,7 @@ const clock = () => Date.now();
  * seconds (the server says how long); when it runs out without an answer it can be sent again.
  */
 export function InviteFriends({ lobby, onInvite }: Props) {
+  const t = useT();
   const { profile } = useAccount();
   const { status, people } = useFriends();
   /** Invites still running: friend's account id -> when it runs out (this device's clock). */
@@ -52,18 +54,18 @@ export function InviteFriends({ lobby, onInvite }: Props) {
 
   return (
     <View style={styles.card} testID="invite-friends">
-      <Text style={styles.label}>Invite friends</Text>
+      <Text style={styles.label}>{t.invite.title}</Text>
       {!profile ? (
-        <Text style={styles.hint}>Sign in on the first screen to invite your friends here. Or share the code.</Text>
+        <Text style={styles.hint}>{t.invite.signIn}</Text>
       ) : full ? (
-        <Text style={styles.hint}>The lobby is full.</Text>
+        <Text style={styles.hint}>{t.invite.full}</Text>
       ) : friends.length === 0 ? (
         <Text style={styles.hint}>
           {status === 'ready' || status === 'failed'
             ? people.some((p) => p.state === 'friend')
-              ? 'All your friends are here.'
-              : 'Add friends with the friends button on the first screen, then invite them here.'
-            : 'One moment…'}
+              ? t.invite.allHere
+              : t.invite.none
+            : t.common.oneMoment}
         </Text>
       ) : (
         friends.map((friend) => {
@@ -78,7 +80,7 @@ export function InviteFriends({ lobby, onInvite }: Props) {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={
-                  waiting ? `Invited ${friend.username}, ${left} seconds left` : `Invite ${friend.username}`
+                  waiting ? t.invite.invited(friend.username, left) : t.invite.inviteNamed(friend.username)
                 }
                 accessibilityState={{ disabled: waiting }}
                 aria-disabled={waiting}
@@ -86,7 +88,7 @@ export function InviteFriends({ lobby, onInvite }: Props) {
                 style={[styles.button, waiting && styles.buttonWaiting]}
               >
                 <Text style={[styles.buttonText, waiting && styles.buttonWaitingText]}>
-                  {waiting ? `Invited · ${left}s` : sent.has(friend.id) ? 'Invite again' : 'Invite'}
+                  {waiting ? t.invite.invitedShort(left) : sent.has(friend.id) ? t.invite.again : t.invite.invite}
                 </Text>
               </Pressable>
             </View>

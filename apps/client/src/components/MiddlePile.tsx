@@ -3,6 +3,7 @@ import type { TileId } from '@gur/engine';
 import { DragSource } from './DragSource';
 import { Tile } from './Tile';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 type Props = {
   count: number;
@@ -48,13 +49,14 @@ export function MiddlePile({
   maxStacks = 8,
   dense = false,
 }: Props) {
+  const t = useT();
   const stacks = Math.max(1, Math.min(maxStacks, Math.ceil(count / 6)));
   const h = Math.round(tileWidth * 1.4);
   return (
     <View style={[styles.wrap, dense && styles.wrapDense]}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Draw from the middle, ${count} tiles left`}
+        accessibilityLabel={t.table.middle(count)}
         accessibilityState={{ disabled: !canDraw }}
         testID="draw-middle"
         onPress={() => canDraw && onDraw()}
@@ -93,7 +95,8 @@ export function MiddlePile({
         </View>
       </Pressable>
       <Text style={[styles.count, dense && styles.countDense]}>
-        <Text testID="middle-count">{count}</Text> tiles in the middle
+        <Text testID="middle-count">{count}</Text>
+        {t.table.inTheMiddle}
       </Text>
     </View>
   );

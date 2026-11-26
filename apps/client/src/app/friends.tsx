@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAccount } from '@/account';
 import { online } from '@/online/connection';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 /**
  * Play with friends. First the choice: create a lobby, or join one. Joining then asks for the
@@ -12,6 +13,7 @@ import { colors } from '@/theme';
  * `?code=ABCDE` goes straight to joining with the code filled in, so an invitation can be a link.
  */
 export default function Friends() {
+  const t = useT();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ code?: string }>();
   // A signed-in player goes by the name on their profile; a guest types one.
@@ -38,8 +40,8 @@ export default function Friends() {
 
   const go = async (what: 'create' | 'join') => {
     if (busy) return;
-    if (!name.trim()) return setError('Please choose a name');
-    if (what === 'join' && !code.trim()) return setError('Type the code your friend gave you');
+    if (!name.trim()) return setError(t.common.chooseName);
+    if (what === 'join' && !code.trim()) return setError(t.friendsScreen.typeCode);
     setError(null);
     setBusy(what);
     const answer = what === 'create' ? await online.create(name) : await online.join(code, name);
@@ -63,30 +65,30 @@ export default function Friends() {
       ]}
     >
       <Text style={styles.title} accessibilityRole="header">
-        Play with friends
+        {t.friendsScreen.title}
       </Text>
 
       {saved && (
         <Pressable accessibilityRole="button" onPress={() => router.replace('/lobby')} style={styles.back}>
-          <Text style={styles.primaryText}>Go back to your game</Text>
+          <Text style={styles.primaryText}>{t.friendsScreen.goBack}</Text>
         </Pressable>
       )}
 
       <View style={styles.card}>
-        <Text style={styles.label}>{profile ? 'Playing as' : 'Your name'}</Text>
+        <Text style={styles.label}>{profile ? t.common.playingAs : t.common.name}</Text>
         {profile ? (
           <Text style={styles.cardTitle} testID="playing-as">
             {profile.username}
           </Text>
         ) : (
           <TextInput
-            accessibilityLabel="Your name"
+            accessibilityLabel={t.common.name}
             value={typed}
             onChangeText={setName}
             maxLength={16}
             autoCapitalize="words"
             autoCorrect={false}
-            placeholder="Name"
+            placeholder={t.common.namePlaceholder}
             placeholderTextColor={colors.textMuted}
             style={styles.input}
           />
@@ -97,38 +99,40 @@ export default function Friends() {
         <View style={styles.choices}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Create a lobby"
+            accessibilityLabel={t.friendsScreen.create}
             onPress={() => void go('create')}
             style={({ pressed }) => [styles.choice, busy !== null && styles.dim, pressed && styles.pressed]}
           >
-            <Text style={styles.choiceTitle}>{busy === 'create' ? 'Creating…' : 'Create a lobby'}</Text>
-            <Text style={styles.choiceHint}>You choose the rules, invite friends and start the game.</Text>
+            <Text style={styles.choiceTitle}>
+              {busy === 'create' ? t.friendsScreen.creating : t.friendsScreen.create}
+            </Text>
+            <Text style={styles.choiceHint}>{t.friendsScreen.createHint}</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Join a lobby"
+            accessibilityLabel={t.friendsScreen.join}
             onPress={() => {
               setError(null);
               setStep('join');
             }}
             style={({ pressed }) => [styles.choice, styles.choiceJoin, pressed && styles.pressed]}
           >
-            <Text style={styles.choiceTitle}>Join a lobby</Text>
-            <Text style={styles.choiceHint}>Type the code a friend gave you.</Text>
+            <Text style={styles.choiceTitle}>{t.friendsScreen.join}</Text>
+            <Text style={styles.choiceHint}>{t.friendsScreen.joinHint}</Text>
           </Pressable>
         </View>
       ) : (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Join a lobby</Text>
+          <Text style={styles.cardTitle}>{t.friendsScreen.join}</Text>
           <TextInput
-            accessibilityLabel="Lobby code"
+            accessibilityLabel={t.friendsScreen.codeLabel}
             value={code}
             onChangeText={(text) => setCode(text.toUpperCase())}
             maxLength={8}
             autoCapitalize="characters"
             autoCorrect={false}
             autoFocus={!params.code}
-            placeholder="CODE"
+            placeholder={t.friendsScreen.codePlaceholder}
             placeholderTextColor={colors.textMuted}
             style={[styles.input, styles.codeInput]}
             onSubmitEditing={() => void go('join')}
@@ -138,14 +142,16 @@ export default function Friends() {
             onPress={() => void go('join')}
             style={({ pressed }) => [styles.primary, busy !== null && styles.dim, pressed && styles.pressed]}
           >
-            <Text style={styles.primaryText}>{busy === 'join' ? 'Joining…' : 'Join'}</Text>
+            <Text style={styles.primaryText}>
+              {busy === 'join' ? t.friendsScreen.joining : t.friendsScreen.joinButton}
+            </Text>
           </Pressable>
         </View>
       )}
 
       {slow && (
         <Text style={styles.hint} testID="waking">
-          Waking up the game server. This can take up to a minute when nobody has played for a while.
+          {t.common.waking}
         </Text>
       )}
       {error && (
@@ -163,7 +169,7 @@ export default function Friends() {
         }}
         style={styles.secondary}
       >
-        <Text style={styles.secondaryText}>Back</Text>
+        <Text style={styles.secondaryText}>{t.common.back}</Text>
       </Pressable>
     </ScrollView>
   );

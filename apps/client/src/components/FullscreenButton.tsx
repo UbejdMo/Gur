@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 type Props = {
   /** A small square with only the icon, for the corner of the table. */
@@ -9,9 +10,10 @@ type Props = {
 
 /** Switches the browser to full screen and back. Shows nothing where the browser can't do it. */
 export function FullscreenButton({ compact = false }: Props) {
+  const t = useT();
   const { supported, active, toggle } = useFullscreen();
   if (!supported) return null;
-  const label = active ? 'Leave full screen' : 'Full screen';
+  const label = active ? t.fullscreen.leave : t.fullscreen.enter;
   return (
     <Pressable
       accessibilityRole="button"

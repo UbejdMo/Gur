@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { MAX_BOT_SECONDS, MIN_BOT_SECONDS } from '@/game/botSettings';
 import type { BotSettings } from '@/game/botSettings';
 import { colors, tileInk } from '@/theme';
+import { useT } from '@/i18n';
 
 type Props = {
   initial: BotSettings;
@@ -13,17 +14,18 @@ const SECONDS = Array.from({ length: MAX_BOT_SECONDS - MIN_BOT_SECONDS + 1 }, (_
 
 /** The options before a game against bots: 12-13-1, and how long each bot takes over its turn. */
 export function BotsSetup({ initial, onStart }: Props) {
+  const t = useT();
   const [aceHigh, setAceHigh] = useState(initial.aceHigh);
   const [seconds, setSeconds] = useState(initial.seconds);
   return (
     <View style={styles.box} testID="bots-setup">
       <View style={styles.option}>
         <View style={styles.optionText}>
-          <Text style={styles.optionTitle}>Allow 12-13-1</Text>
-          <Text style={styles.hint}>Some areas count 12, 13, 1 as a run. 13-1-2 never counts.</Text>
+          <Text style={styles.optionTitle}>{t.common.allowAceHigh}</Text>
+          <Text style={styles.hint}>{t.common.aceHighHint}</Text>
         </View>
         <Switch
-          accessibilityLabel="Allow 12-13-1"
+          accessibilityLabel={t.common.allowAceHigh}
           value={aceHigh}
           onValueChange={setAceHigh}
           trackColor={{ true: colors.accent, false: colors.table }}
@@ -31,19 +33,20 @@ export function BotsSetup({ initial, onStart }: Props) {
       </View>
 
       <View style={styles.optionColumn}>
-        <Text style={styles.optionTitle}>Bot time</Text>
+        <Text style={styles.optionTitle}>{t.botsSetup.time}</Text>
         <Text style={styles.hint}>
-          Each bot takes <Text style={styles.strong}>{seconds === 1 ? '1 second' : `${seconds} seconds`}</Text> over its
-          turn, so you have time to arrange your tiles.
+          {t.botsSetup.timeBefore}
+          <Text style={styles.strong}>{t.common.seconds(seconds)}</Text>
+          {t.botsSetup.timeAfter}
         </Text>
-        <View style={styles.seconds} accessibilityRole="radiogroup" accessibilityLabel="Seconds per bot turn">
+        <View style={styles.seconds} accessibilityRole="radiogroup" accessibilityLabel={t.botsSetup.secondsPerTurn}>
           {SECONDS.map((n) => {
             const on = n === seconds;
             return (
               <Pressable
                 key={n}
                 accessibilityRole="radio"
-                accessibilityLabel={n === 1 ? '1 second' : `${n} seconds`}
+                accessibilityLabel={t.common.seconds(n)}
                 accessibilityState={{ checked: on }}
                 aria-checked={on}
                 onPress={() => setSeconds(n)}
@@ -61,7 +64,7 @@ export function BotsSetup({ initial, onStart }: Props) {
         onPress={() => onStart({ aceHigh, seconds })}
         style={({ pressed }) => [styles.start, pressed && styles.pressed]}
       >
-        <Text style={styles.startText}>Start the game</Text>
+        <Text style={styles.startText}>{t.common.startGame}</Text>
       </Pressable>
     </View>
   );

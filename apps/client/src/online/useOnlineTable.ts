@@ -7,6 +7,7 @@ import { pickClosingTile, tableFlags } from '@/game/tableModel';
 import type { Place, TableModel } from '@/game/tableModel';
 import type { Connection } from './connection';
 import { initialOnlineTable, onlineTableReducer } from './onlineTable';
+import { strings } from '@/i18n';
 
 /** Seconds until a moment on the server's clock, counted down on this device. Null when there is none. */
 export function useCountdown(endsAt: number | null, clockOffset: number): number | null {
@@ -109,8 +110,7 @@ export function useOnlineTable(
             now.view.round.joker,
             now.view.settings.aceHigh,
           );
-        if (chosen === null)
-          dispatch({ type: 'message', text: 'Connect all your tiles into melds on the rack to close' });
+        if (chosen === null) dispatch({ type: 'message', text: strings().moves.connectToClose });
         else void closeWith(chosen);
       },
     };

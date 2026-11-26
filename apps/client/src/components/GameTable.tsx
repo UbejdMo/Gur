@@ -16,6 +16,7 @@ import { SIDEWAYS_RACK_COLS, discardRowWidth, feltLayout, sidewaysRack } from '@
 import { seatsAround } from '@/game/tableModel';
 import type { TableModel } from '@/game/tableModel';
 import { colors } from '@/theme';
+import { tileName, translateRefusal, useT } from '@/i18n';
 
 type Props = {
   /** The game as you see it and what you can do in it: the practice game, or a game on the server. */
@@ -52,6 +53,7 @@ type Props = {
  * that aren't allowed instead, and still report "disabled" to screen readers.
  */
 export function GameTable({ table: p, overlay, onLeave, leaveNote, speech, chatButton }: Props) {
+  const t = useT();
   const { view, names } = p;
   const { round } = view;
   const YOU = view.seat;
@@ -80,18 +82,18 @@ export function GameTable({ table: p, overlay, onLeave, leaveNote, speech, chatB
   );
 
   const status = !playing
-    ? 'Round over'
+    ? t.table.roundOver
     : !p.yourTurn
-      ? `${names[round.current]} is playing…`
+      ? t.table.playing(names[round.current]!)
       : round.phase === 'draw'
-        ? 'Your turn: draw from the middle or take the last discard (tap or drag)'
+        ? t.table.yourTurn
         : p.canClose
-          ? 'You can close! Drag your extra tile up, or press Close'
+          ? t.table.canClose
           : p.tookIndicator
-            ? 'You took the indicator: connect your tiles on the rack, then close'
+            ? t.table.tookIndicator
             : p.selected === null
-              ? 'Drag a tile up off your rack to discard it'
-              : 'Discard it, or tap a slot to move it there';
+              ? t.table.dragToDiscard
+              : t.table.discardOrMove;
 
   const short = height < 560;
   // A phone held sideways: 300 to 400 points of height (less inside a browser, where the
@@ -266,7 +268,7 @@ export function GameTable({ table: p, overlay, onLeave, leaveNote, speech, chatB
       </Text>
       {p.message && (
         <Text style={styles.message} testID="message">
-          {p.message}
+          {translateRefusal(p.message)}
         </Text>
       )}
     </View>
@@ -280,7 +282,7 @@ export function GameTable({ table: p, overlay, onLeave, leaveNote, speech, chatB
         onPress={() => p.canDiscard && p.discard()}
         style={[styles.button, wide && styles.buttonSide, !p.canDiscard && styles.dim]}
       >
-        <Text style={styles.buttonText}>Discard</Text>
+        <Text style={styles.buttonText}>{t.table.discard}</Text>
       </Pressable>
       {/* Close only appears once the rack shows a closing hand: every tile connected, one to spare. */}
       {p.canClose && (
@@ -289,14 +291,14 @@ export function GameTable({ table: p, overlay, onLeave, leaveNote, speech, chatB
           onPress={() => p.close()}
           style={[styles.button, wide && styles.buttonSide, styles.closeButton]}
         >
-          <Text style={styles.buttonText}>Close</Text>
+          <Text style={styles.buttonText}>{t.table.close}</Text>
         </Pressable>
       )}
       <View
         style={[styles.jokerBox, tight && styles.jokerBoxTight]}
-        accessibilityLabel={`Joker: ${round.joker.color} ${round.joker.number}`}
+        accessibilityLabel={t.table.jokerIs(tileName(tileId(round.joker.color, round.joker.number), t))}
       >
-        <Text style={styles.jokerLabel}>JOKER</Text>
+        <Text style={styles.jokerLabel}>{t.table.joker}</Text>
         <Tile
           id={tileId(round.joker.color, round.joker.number)}
           width={tight ? 18 : wide ? 30 : 24}
@@ -329,7 +331,7 @@ export function GameTable({ table: p, overlay, onLeave, leaveNote, speech, chatB
   const leaveButton = onLeave && (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Leave the game"
+      accessibilityLabel={t.table.leaveGame}
       testID="leave-game"
       onPress={() => setLeaving(true)}
       style={({ pressed }) => [styles.leave, tight && styles.leaveTight, pressed && styles.leavePressed]}
@@ -402,7 +404,7 @@ export function GameTable({ table: p, overlay, onLeave, leaveNote, speech, chatB
       {leaving && onLeave && (
         <View style={styles.confirm} testID="leave-confirm">
           <View style={styles.confirmBox} accessibilityRole="alert">
-            <Text style={styles.confirmTitle}>Leave the game?</Text>
+            <Text style={styles.confirmTitle}>{t.table.leaveAsk}</Text>
             {leaveNote && <Text style={styles.confirmText}>{leaveNote}</Text>}
             <View style={styles.confirmRow}>
               <Pressable
@@ -413,10 +415,10 @@ export function GameTable({ table: p, overlay, onLeave, leaveNote, speech, chatB
                 }}
                 style={[styles.confirmButton, styles.confirmLeave]}
               >
-                <Text style={styles.confirmLeaveText}>Leave</Text>
+                <Text style={styles.confirmLeaveText}>{t.common.leave}</Text>
               </Pressable>
               <Pressable accessibilityRole="button" onPress={() => setLeaving(false)} style={styles.confirmButton}>
-                <Text style={styles.confirmKeepText}>Keep playing</Text>
+                <Text style={styles.confirmKeepText}>{t.table.keepPlaying}</Text>
               </Pressable>
             </View>
           </View>

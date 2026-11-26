@@ -6,6 +6,7 @@ import type { Profile } from '@/account/account';
 import type { Person } from '@/account/friends';
 import { Avatar } from './Avatar';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 type Props = {
   profile: Profile;
@@ -19,6 +20,7 @@ type Props = {
  * asked, and the players you blocked.
  */
 export function FriendsPanel({ profile, onMessage }: Props) {
+  const t = useT();
   const { status: listStatus, people } = useFriends();
   const { blocked } = useMessages();
   // Opening the panel looks for news at once, rather than waiting for the next half-minute check.
@@ -56,15 +58,15 @@ export function FriendsPanel({ profile, onMessage }: Props) {
   return (
     <View style={styles.box}>
       <View style={styles.card}>
-        <Text style={styles.label}>Add a friend</Text>
+        <Text style={styles.label}>{t.friends.add}</Text>
         <TextInput
-          accessibilityLabel="Username or ID"
+          accessibilityLabel={t.friends.usernameOrId}
           value={who}
           onChangeText={setWho}
           maxLength={16}
           autoCapitalize="none"
           autoCorrect={false}
-          placeholder="Username or ID"
+          placeholder={t.friends.usernameOrId}
           placeholderTextColor={colors.textMuted}
           style={styles.input}
           onSubmitEditing={() => void add()}
@@ -75,14 +77,16 @@ export function FriendsPanel({ profile, onMessage }: Props) {
           disabled={busy}
           style={({ pressed }) => [styles.primary, busy && styles.dim, pressed && styles.pressed]}
         >
-          <Text style={styles.primaryText}>Send request</Text>
+          <Text style={styles.primaryText}>{t.friends.sendRequest}</Text>
         </Pressable>
         <Text style={styles.hint}>
-          Friends can add you as <Text style={styles.strong}>{profile.username}</Text> or by your ID{' '}
+          {t.friends.addMeBefore}
+          <Text style={styles.strong}>{profile.username}</Text>
+          {t.friends.addMeMiddle}
           <Text style={styles.strong} selectable>
             {profile.publicId}
           </Text>
-          .
+          {t.friends.addMeAfter}
         </Text>
       </View>
 
@@ -94,17 +98,14 @@ export function FriendsPanel({ profile, onMessage }: Props) {
 
       {incoming.length > 0 && (
         <View style={styles.card} testID="requests">
-          <Text style={styles.label}>Requests</Text>
+          <Text style={styles.label}>{t.friends.requests}</Text>
           {incoming.map((p) =>
             blocking === p.id ? (
               <View key={p.id} style={styles.confirm}>
-                <Text style={styles.confirmText}>
-                  Block {p.username}? Their request goes, and neither of you can send the other a request or a message.
-                  They are not told.
-                </Text>
+                <Text style={styles.confirmText}>{t.friends.blockAsk(p.username)}</Text>
                 <View style={styles.confirmRow}>
                   <Small
-                    label={`Yes, block ${p.username}`}
+                    label={t.friends.yesBlock(p.username)}
                     danger
                     onPress={() =>
                       void act(
@@ -114,23 +115,23 @@ export function FriendsPanel({ profile, onMessage }: Props) {
                       )
                     }
                   >
-                    Block
+                    {t.friends.short.block}
                   </Small>
-                  <Small label={`Keep ${p.username}'s request`} onPress={() => setBlocking(null)}>
-                    Cancel
+                  <Small label={t.friends.keepRequest(p.username)} onPress={() => setBlocking(null)}>
+                    {t.common.cancel}
                   </Small>
                 </View>
               </View>
             ) : (
               <PersonRow key={p.id} person={p}>
-                <Small label={`Accept ${p.username}`} on onPress={() => void act(friends.accept(p.id))}>
-                  Accept
+                <Small label={t.friends.accept(p.username)} on onPress={() => void act(friends.accept(p.id))}>
+                  {t.friends.short.accept}
                 </Small>
-                <Small label={`Decline ${p.username}`} onPress={() => void act(friends.remove(p.id))}>
-                  Decline
+                <Small label={t.friends.decline(p.username)} onPress={() => void act(friends.remove(p.id))}>
+                  {t.friends.short.decline}
                 </Small>
-                <Small label={`Block ${p.username}`} quiet onPress={() => setBlocking(p.id)}>
-                  Block
+                <Small label={t.friends.block(p.username)} quiet onPress={() => setBlocking(p.id)}>
+                  {t.friends.short.block}
                 </Small>
               </PersonRow>
             ),
@@ -139,35 +140,35 @@ export function FriendsPanel({ profile, onMessage }: Props) {
       )}
 
       <View style={styles.card} testID="friends-list">
-        <Text style={styles.label}>Your friends</Text>
+        <Text style={styles.label}>{t.friends.yours}</Text>
         {mine.length === 0 && (
           <Text style={styles.empty}>
             {listStatus === 'failed'
-              ? 'Your friends could not be fetched. Check your connection.'
+              ? t.friends.couldNotFetch
               : listStatus === 'ready'
-                ? 'Nobody yet. Send a request above.'
-                : 'One moment…'}
+                ? t.friends.nobody
+                : t.common.oneMoment}
           </Text>
         )}
         {mine.map((p) =>
           removing === p.id ? (
             <PersonRow key={p.id} person={p}>
-              <Small label={`Yes, remove ${p.username}`} danger onPress={() => void act(friends.remove(p.id))}>
-                Remove
+              <Small label={t.friends.yesRemove(p.username)} danger onPress={() => void act(friends.remove(p.id))}>
+                {t.friends.short.remove}
               </Small>
-              <Small label={`Keep ${p.username}`} onPress={() => setRemoving(null)}>
-                Keep
+              <Small label={t.friends.keep(p.username)} onPress={() => setRemoving(null)}>
+                {t.friends.short.keep}
               </Small>
             </PersonRow>
           ) : (
             <PersonRow key={p.id} person={p}>
               {onMessage && (
-                <Small label={`Message ${p.username}`} on onPress={() => onMessage(p)}>
-                  Message
+                <Small label={t.friends.message(p.username)} on onPress={() => onMessage(p)}>
+                  {t.friends.short.message}
                 </Small>
               )}
-              <Small label={`Remove ${p.username}`} quiet onPress={() => setRemoving(p.id)}>
-                Remove
+              <Small label={t.friends.remove(p.username)} quiet onPress={() => setRemoving(p.id)}>
+                {t.friends.short.remove}
               </Small>
             </PersonRow>
           ),
@@ -176,15 +177,11 @@ export function FriendsPanel({ profile, onMessage }: Props) {
 
       {outgoing.length > 0 && (
         <View style={styles.card} testID="sent">
-          <Text style={styles.label}>Waiting for an answer</Text>
+          <Text style={styles.label}>{t.friends.waiting}</Text>
           {outgoing.map((p) => (
             <PersonRow key={p.id} person={p}>
-              <Small
-                label={`Take back the request to ${p.username}`}
-                quiet
-                onPress={() => void act(friends.remove(p.id))}
-              >
-                Take back
+              <Small label={t.friends.takeBack(p.username)} quiet onPress={() => void act(friends.remove(p.id))}>
+                {t.friends.short.takeBack}
               </Small>
             </PersonRow>
           ))}
@@ -193,11 +190,11 @@ export function FriendsPanel({ profile, onMessage }: Props) {
 
       {blocked.length > 0 && (
         <View style={styles.card} testID="blocked">
-          <Text style={styles.label}>Blocked</Text>
+          <Text style={styles.label}>{t.friends.blocked}</Text>
           {blocked.map((p) => (
             <PersonRow key={p.id} person={p}>
-              <Small label={`Unblock ${p.username}`} quiet onPress={() => void act(messages.unblock(p.id))}>
-                Unblock
+              <Small label={t.friends.unblock(p.username)} quiet onPress={() => void act(messages.unblock(p.id))}>
+                {t.friends.short.unblock}
               </Small>
             </PersonRow>
           ))}

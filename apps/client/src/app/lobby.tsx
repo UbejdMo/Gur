@@ -8,6 +8,7 @@ import { OnlineTable } from '@/components/OnlineTable';
 import { online } from '@/online/connection';
 import { useOnline } from '@/online/useOnline';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 /**
  * Your lobby: the waiting room until the host starts (or a public table starts by itself), then
@@ -15,6 +16,7 @@ import { colors } from '@/theme';
  * in, if it still exists; otherwise to the first screen.
  */
 export default function LobbyScreen() {
+  const t = useT();
   const { lobby, status, clockOffset, chat } = useOnline();
   const missing = lobby === null;
 
@@ -46,7 +48,7 @@ export default function LobbyScreen() {
   if (!lobby) {
     return (
       <View style={styles.center}>
-        <Text style={styles.text}>Getting you back to your lobby…</Text>
+        <Text style={styles.text}>{t.lobby.gettingBack}</Text>
       </View>
     );
   }

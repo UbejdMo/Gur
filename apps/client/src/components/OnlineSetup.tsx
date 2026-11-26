@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import type { Ack } from '@gur/server/protocol';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 type Props = {
   /** A signed-in player's name; null for a guest, who types one. */
@@ -16,6 +17,7 @@ type Props = {
  * players who made the same choice.
  */
 export function OnlineSetup({ username, initialName, initialAceHigh, onFind }: Props) {
+  const t = useT();
   const [typed, setTyped] = useState(initialName);
   const [aceHigh, setAceHigh] = useState(initialAceHigh);
   const [busy, setBusy] = useState(false);
@@ -35,7 +37,7 @@ export function OnlineSetup({ username, initialName, initialAceHigh, onFind }: P
 
   const find = async () => {
     if (busy) return;
-    if (!name.trim()) return setError('Please choose a name');
+    if (!name.trim()) return setError(t.common.chooseName);
     setError(null);
     setBusy(true);
     const answer = await onFind(name, aceHigh);
@@ -45,28 +47,25 @@ export function OnlineSetup({ username, initialName, initialAceHigh, onFind }: P
 
   return (
     <View style={styles.box} testID="online-setup">
-      <Text style={styles.hint}>
-        You sit at a table with up to three other players, and only people play: no bots. The game starts with at least
-        two players. One round.
-      </Text>
+      <Text style={styles.hint}>{t.onlineSetup.hint}</Text>
       {username ? (
         <View style={styles.optionColumn}>
-          <Text style={styles.label}>Playing as</Text>
+          <Text style={styles.label}>{t.common.playingAs}</Text>
           <Text style={styles.optionTitle} testID="online-playing-as">
             {username}
           </Text>
         </View>
       ) : (
         <View style={styles.optionColumn}>
-          <Text style={styles.label}>Your name</Text>
+          <Text style={styles.label}>{t.common.name}</Text>
           <TextInput
-            accessibilityLabel="Your name"
+            accessibilityLabel={t.common.name}
             value={typed}
             onChangeText={setTyped}
             maxLength={16}
             autoCapitalize="words"
             autoCorrect={false}
-            placeholder="Name"
+            placeholder={t.common.namePlaceholder}
             placeholderTextColor={colors.textMuted}
             style={styles.input}
             onSubmitEditing={() => void find()}
@@ -75,11 +74,11 @@ export function OnlineSetup({ username, initialName, initialAceHigh, onFind }: P
       )}
       <View style={styles.option}>
         <View style={styles.optionText}>
-          <Text style={styles.optionTitle}>Allow 12-13-1</Text>
-          <Text style={styles.hint}>You only meet players who chose the same.</Text>
+          <Text style={styles.optionTitle}>{t.common.allowAceHigh}</Text>
+          <Text style={styles.hint}>{t.onlineSetup.sameChoice}</Text>
         </View>
         <Switch
-          accessibilityLabel="Allow 12-13-1"
+          accessibilityLabel={t.common.allowAceHigh}
           value={aceHigh}
           onValueChange={setAceHigh}
           trackColor={{ true: colors.accent, false: colors.table }}
@@ -87,15 +86,15 @@ export function OnlineSetup({ username, initialName, initialAceHigh, onFind }: P
       </View>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Find players"
+        accessibilityLabel={t.onlineSetup.find}
         onPress={() => void find()}
         style={({ pressed }) => [styles.start, busy && styles.dim, pressed && styles.pressed]}
       >
-        <Text style={styles.startText}>{busy ? 'Finding a table…' : 'Find players'}</Text>
+        <Text style={styles.startText}>{busy ? t.onlineSetup.finding : t.onlineSetup.find}</Text>
       </Pressable>
       {slow && (
         <Text style={styles.hint} testID="online-waking">
-          Waking up the game server. This can take up to a minute when nobody has played for a while.
+          {t.common.waking}
         </Text>
       )}
       {error && (

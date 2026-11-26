@@ -1,6 +1,7 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { SpeechBubble } from './SpeechBubble';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 type Props = {
   name: string;
@@ -56,6 +57,7 @@ export function PlayerPanel({
   speech,
   speechBelow,
 }: Props) {
+  const t = useT();
   const color = avatarColor(seat);
   return (
     <View
@@ -67,7 +69,7 @@ export function PlayerPanel({
         isTurn && styles.turn,
       ]}
       testID={you ? 'seat-you' : 'seat'}
-      accessibilityLabel={`${name}, ${tileCount} tiles, ${points} points${isTurn ? ', playing now' : ''}`}
+      accessibilityLabel={t.table.seat(name, tileCount, points, isTurn)}
     >
       <View
         style={[
@@ -87,7 +89,7 @@ export function PlayerPanel({
           />
         ) : (
           <Text style={[styles.initial, (compact || small) && styles.initialCompact, tiny && styles.initialTiny]}>
-            {you ? 'You' : initialOf(name)}
+            {you ? t.common.you : initialOf(name)}
           </Text>
         )}
       </View>
@@ -99,7 +101,7 @@ export function PlayerPanel({
           </Text>
         )}
         <Text style={[styles.detail, tiny && styles.detailTiny]} numberOfLines={1}>
-          {tiny && !you ? `${tileCount} · ${points} pts` : `${tileCount} tiles · ${points} pts`}
+          {tiny && !you ? t.table.seatShort(tileCount, points) : t.table.seatLong(tileCount, points)}
         </Text>
         {secondsLeft !== undefined && secondsLeft !== null && (
           // On the one-line panel the timer runs along the bottom edge, so the text keeps the width.

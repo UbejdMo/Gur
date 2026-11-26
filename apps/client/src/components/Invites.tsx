@@ -7,6 +7,7 @@ import { messages, useAccount } from '@/account';
 import { online } from '@/online/connection';
 import { Avatar } from './Avatar';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 type Shown = Invite & { until: number; key: number };
 
@@ -17,6 +18,7 @@ type Shown = Invite & { until: number; key: number };
  * It sits over every screen, so an invite reaches you wherever you are in the app.
  */
 export function Invites() {
+  const t = useT();
   const { status, profile } = useAccount();
   const insets = useSafeAreaInsets();
   const [shown, setShown] = useState<Shown | null>(null);
@@ -81,29 +83,29 @@ export function Invites() {
         <Avatar name={shown.from.name} url={shown.from.avatarUrl} size={44} />
         <View style={styles.text}>
           <Text style={styles.title} numberOfLines={2}>
-            {shown.from.name} invites you to play
+            {t.invite.incoming(shown.from.name)}
           </Text>
           <Text style={styles.hint} testID="invite-seconds">
-            {problem ?? `Lobby ${shown.code} · ${left} s`}
+            {problem ?? t.invite.incomingLobby(shown.code, left)}
           </Text>
         </View>
       </View>
       <View style={styles.row}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Join ${shown.from.name}`}
+          accessibilityLabel={t.invite.joinNamed(shown.from.name)}
           onPress={() => void join()}
           disabled={busy}
           style={({ pressed }) => [styles.join, busy && styles.dim, pressed && styles.pressed]}
         >
-          <Text style={styles.joinText}>Join</Text>
+          <Text style={styles.joinText}>{t.invite.join}</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
           onPress={() => setShown(null)}
           style={({ pressed }) => [styles.later, pressed && styles.pressed]}
         >
-          <Text style={styles.laterText}>Not now</Text>
+          <Text style={styles.laterText}>{t.invite.notNow}</Text>
         </Pressable>
       </View>
       {/* The time left, as a bar that runs down. */}

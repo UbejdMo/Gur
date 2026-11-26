@@ -11,6 +11,7 @@ import { ChatIcon } from './icons';
 import { avatarColor } from './PlayerPanel';
 import { Popover } from './Popover';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 type Props = {
   lobby: LobbyState;
@@ -30,13 +31,14 @@ const MAX_LINE = 200;
  * reported.
  */
 export function TableChat({ lobby, chat, onSay, onReport, small }: Props) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const { unread } = useTableChat(lobby, chat);
   return (
     <>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={unread ? `Chat, ${unread} unread` : 'Chat'}
+        accessibilityLabel={unread ? t.chat.buttonUnread(unread) : t.chat.button}
         testID="table-chat-button"
         onPress={() => setOpen(true)}
         style={({ pressed }) => [styles.button, small && styles.buttonSmall, pressed && styles.pressed]}
@@ -48,7 +50,7 @@ export function TableChat({ lobby, chat, onSay, onReport, small }: Props) {
           </View>
         )}
       </Pressable>
-      <Popover title="Chat" open={open} onClose={() => setOpen(false)} testID="table-chat">
+      <Popover title={t.chat.title} open={open} onClose={() => setOpen(false)} testID="table-chat">
         <ChatPanel lobby={lobby} chat={chat} onSay={onSay} onReport={onReport} />
       </Popover>
     </>
@@ -56,6 +58,7 @@ export function TableChat({ lobby, chat, onSay, onReport, small }: Props) {
 }
 
 function ChatPanel({ lobby, chat, onSay, onReport }: Omit<Props, 'small'>) {
+  const t = useT();
   const screen = useWindowDimensions();
   // A phone on its side: smaller emojis and no footnote, so the box and Send stay on screen.
   const low = screen.height < 520;
@@ -102,23 +105,23 @@ function ChatPanel({ lobby, chat, onSay, onReport }: Omit<Props, 'small'>) {
                 </Text>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={silent ? `Unmute ${member.name}` : `Mute ${member.name}`}
+                  accessibilityLabel={silent ? t.chat.unmute(member.name) : t.chat.mute(member.name)}
                   onPress={() => (silent ? tableChatMemory.unmute(member.chatId) : tableChatMemory.mute(member.chatId))}
                   style={styles.small}
                 >
-                  <Text style={styles.smallText}>{silent ? 'Unmute' : 'Mute'}</Text>
+                  <Text style={styles.smallText}>{silent ? t.chat.unmuteShort : t.chat.muteShort}</Text>
                 </Pressable>
                 {canReport && (
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`Report ${member.name}`}
+                    accessibilityLabel={t.chat.report(member.name)}
                     onPress={() => {
                       setNotice(null);
                       setReporting(member.chatId);
                     }}
                     style={styles.small}
                   >
-                    <Text style={styles.smallText}>Report</Text>
+                    <Text style={styles.smallText}>{t.chat.reportShort}</Text>
                   </Pressable>
                 )}
               </View>
@@ -143,11 +146,7 @@ function ChatPanel({ lobby, chat, onSay, onReport }: Omit<Props, 'small'>) {
             // Reported players are muted for you too.
             tableChatMemory.mute(reportee.chatId);
             setReporting(null);
-            setNotice(
-              `Thank you. Your report about ${reportee.name} was sent, and they are muted for you.${
-                alsoBlock ? ' They are blocked too.' : ''
-              }`,
-            );
+            setNotice(t.chat.reported(reportee.name, alsoBlock));
             return null;
           }}
         />
@@ -167,11 +166,11 @@ function ChatPanel({ lobby, chat, onSay, onReport }: Omit<Props, 'small'>) {
             onContentSizeChange={() => list.current?.scrollToEnd({ animated: false })}
             testID="chat-lines"
           >
-            {lines.length === 0 && <Text style={styles.empty}>Nothing said yet. Say hello, or send an emoji.</Text>}
+            {lines.length === 0 && <Text style={styles.empty}>{t.chat.nothing}</Text>}
             {lines.map((line) => (
               <View key={line.id} style={styles.line} testID={line.from === mine ? 'chat-mine' : 'chat-theirs'}>
                 <Text style={[styles.lineName, { color: avatarColor(line.seat) }]}>
-                  {line.from === mine ? 'You' : line.name}
+                  {line.from === mine ? t.common.you : line.name}
                 </Text>
                 <Text style={[styles.lineText, isEmoji(line.text) && styles.lineEmoji]} selectable>
                   {line.text}
@@ -180,12 +179,12 @@ function ChatPanel({ lobby, chat, onSay, onReport }: Omit<Props, 'small'>) {
             ))}
           </ScrollView>
 
-          <View style={styles.emojis} accessibilityLabel="Emojis: a tap sends one">
+          <View style={styles.emojis} accessibilityLabel={t.chat.emojis}>
             {EMOJIS.map((emoji) => (
               <Pressable
                 key={emoji}
                 accessibilityRole="button"
-                accessibilityLabel={`Send ${emoji}`}
+                accessibilityLabel={t.chat.sendEmoji(emoji)}
                 onPress={() => void say(emoji)}
                 style={({ pressed }) => [styles.emoji, low && styles.emojiLow, pressed && styles.emojiPressed]}
               >
@@ -196,11 +195,11 @@ function ChatPanel({ lobby, chat, onSay, onReport }: Omit<Props, 'small'>) {
 
           <View style={styles.composer}>
             <TextInput
-              accessibilityLabel="Message to the table"
+              accessibilityLabel={t.chat.input}
               value={text}
               onChangeText={setText}
               maxLength={MAX_LINE}
-              placeholder="Say something"
+              placeholder={t.chat.placeholder}
               placeholderTextColor={colors.textMuted}
               style={styles.input}
               onSubmitEditing={() => void say(text)}
@@ -209,12 +208,12 @@ function ChatPanel({ lobby, chat, onSay, onReport }: Omit<Props, 'small'>) {
             />
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Send"
+              accessibilityLabel={t.common.send}
               onPress={() => void say(text)}
               disabled={busy}
               style={({ pressed }) => [styles.send, busy && styles.dim, pressed && styles.pressed]}
             >
-              <Text style={styles.sendText}>Send</Text>
+              <Text style={styles.sendText}>{t.common.send}</Text>
             </Pressable>
           </View>
           {error && (
@@ -222,7 +221,7 @@ function ChatPanel({ lobby, chat, onSay, onReport }: Omit<Props, 'small'>) {
               {error}
             </Text>
           )}
-          {!low && <Text style={styles.hint}>The chat is not kept: it is gone when the lobby closes.</Text>}
+          {!low && <Text style={styles.hint}>{t.chat.notKept}</Text>}
         </>
       )}
     </View>
@@ -238,6 +237,7 @@ function ReportForm({
   onCancel: () => void;
   onSend: (why: ReportReason, note: string, alsoBlock: boolean) => Promise<string | null>;
 }) {
+  const t = useT();
   const [why, setWhy] = useState<ReportReason | null>(null);
   const [note, setNote] = useState('');
   const [alsoBlock, setAlsoBlock] = useState(true);
@@ -246,7 +246,7 @@ function ReportForm({
 
   const send = async () => {
     if (!why) {
-      setError('Choose a reason');
+      setError(t.messages.chooseReason);
       return;
     }
     setBusy(true);
@@ -256,12 +256,10 @@ function ReportForm({
 
   return (
     <View style={styles.card} testID="chat-report">
-      <Text style={styles.cardText}>
-        Report {name}. The game&apos;s owner sees your report with what {name} said at this table, and nobody else. They
-        are not told who reported them.
-      </Text>
-      <View accessibilityRole="radiogroup" accessibilityLabel="Reason" style={styles.reasons}>
-        {REPORT_REASONS.map(({ reason, label }) => {
+      <Text style={styles.cardText}>{t.chat.reportAbout(name)}</Text>
+      <View accessibilityRole="radiogroup" accessibilityLabel={t.messages.reason} style={styles.reasons}>
+        {REPORT_REASONS.map(({ reason }) => {
+          const label = t.messages.reasons[reason] ?? reason;
           const on = why === reason;
           return (
             <Pressable
@@ -280,19 +278,19 @@ function ReportForm({
         })}
       </View>
       <TextInput
-        accessibilityLabel="What happened (optional)"
+        accessibilityLabel={t.messages.whatHappened}
         value={note}
         onChangeText={setNote}
         maxLength={500}
         multiline
-        placeholder="What happened? (optional)"
+        placeholder={t.messages.whatHappenedPlaceholder}
         placeholderTextColor={colors.textMuted}
         style={[styles.input, styles.note]}
       />
       <View style={styles.option}>
-        <Text style={styles.optionText}>Also block {name}</Text>
+        <Text style={styles.optionText}>{t.messages.alsoBlock(name)}</Text>
         <Switch
-          accessibilityLabel={`Also block ${name}`}
+          accessibilityLabel={t.messages.alsoBlock(name)}
           value={alsoBlock}
           onValueChange={setAlsoBlock}
           trackColor={{ true: colors.accent, false: colors.tableDark }}
@@ -305,10 +303,10 @@ function ReportForm({
           disabled={busy}
           style={({ pressed }) => [styles.send, busy && styles.dim, pressed && styles.pressed]}
         >
-          <Text style={styles.sendText}>Send report</Text>
+          <Text style={styles.sendText}>{t.messages.sendReport}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={onCancel} style={styles.small}>
-          <Text style={styles.smallText}>Cancel</Text>
+          <Text style={styles.smallText}>{t.common.cancel}</Text>
         </Pressable>
       </View>
       {error && (

@@ -1,3 +1,5 @@
+import { strings } from '@/i18n';
+
 /**
  * Messages between friends, the players you blocked, and reporting. One store for the whole
  * app, kept outside the screens. Only for a signed-in player; the database
@@ -84,20 +86,19 @@ export type MessagesSnapshot = {
 };
 
 const EMPTY: MessagesSnapshot = { status: 'idle', chats: [], unread: 0, threads: {}, blocked: [] };
-const TROUBLE = 'That did not work. Please try again';
 
 export function sendProblem(status: SendStatus): string | null {
   switch (status) {
     case 'sent':
       return null;
     case 'empty':
-      return 'Type a message first';
+      return strings().messages.typeFirst;
     case 'too_long':
-      return `A message can be at most ${MAX_MESSAGE} characters`;
+      return strings().messages.tooLong(MAX_MESSAGE);
     case 'not_friends':
-      return 'You can only write to your friends';
+      return strings().messages.onlyFriends;
     case 'too_fast':
-      return 'You are writing very fast. Wait a moment, then send it again';
+      return strings().messages.tooFast;
   }
 }
 
@@ -106,17 +107,15 @@ export function reportProblem(status: ReportStatus): string | null {
     case 'sent':
       return null;
     case 'invalid':
-      return 'Choose a reason, and keep the note under 500 characters';
+      return strings().messages.badReport;
     case 'not_found':
-      return 'That player does not exist any more';
+      return strings().messages.gone;
     case 'yourself':
-      return 'You cannot report yourself';
+      return strings().messages.reportYourself;
     case 'too_many':
-      return 'You have sent a lot of reports today. Try again tomorrow, or write to us';
+      return strings().messages.tooManyReports;
   }
 }
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** When a message was sent, short: "14:05" today, "18 Nov" this year, "18 Nov 2025" before. */
 export function when(iso: string, now: Date = new Date()): string {
@@ -125,7 +124,7 @@ export function when(iso: string, now: Date = new Date()): string {
   if (at.toDateString() === now.toDateString()) {
     return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
   }
-  const day = `${at.getDate()} ${MONTHS[at.getMonth()]}`;
+  const day = `${at.getDate()} ${strings().messages.months[at.getMonth()]}`;
   return at.getFullYear() === now.getFullYear() ? day : `${day} ${at.getFullYear()}`;
 }
 
@@ -224,7 +223,7 @@ export class Messages {
 
   /** Sends a message. `ok` says whether it went; otherwise `message` says why not. */
   async send(to: string, raw: string): Promise<{ ok: boolean; message: string | null }> {
-    if (!this.backend) return { ok: false, message: 'Sign in first' };
+    if (!this.backend) return { ok: false, message: strings().common.signInFirst };
     const body = raw.trim();
     if (!body) return { ok: false, message: sendProblem('empty') };
     if (body.length > MAX_MESSAGE) return { ok: false, message: sendProblem('too_long') };
@@ -232,9 +231,10 @@ export class Messages {
     try {
       answer = await this.backend.send(to, body);
     } catch {
-      return { ok: false, message: TROUBLE };
+      return { ok: false, message: strings().common.tryAgain };
     }
-    if (answer.status !== 'sent' || !answer.line) return { ok: false, message: sendProblem(answer.status) ?? TROUBLE };
+    if (answer.status !== 'sent' || !answer.line)
+      return { ok: false, message: sendProblem(answer.status) ?? strings().common.tryAgain };
     const thread = this.snapshot.threads[to] ?? { lines: [], status: 'ready' as const, more: false };
     this.setThread(to, { ...thread, lines: merge(thread.lines, [answer.line]) });
     this.poke(to);
@@ -254,11 +254,11 @@ export class Messages {
 
   /** Blocks a player. Resolves to what went wrong in words, or null. */
   async block(who: string): Promise<string | null> {
-    if (!this.backend) return 'Sign in first';
+    if (!this.backend) return strings().common.signInFirst;
     try {
       await this.backend.block(who);
     } catch {
-      return TROUBLE;
+      return strings().common.tryAgain;
     }
     const chats = this.snapshot.chats.filter((c) => c.id !== who);
     this.update({ chats, unread: chats.reduce((n, c) => n + c.unread, 0) });
@@ -268,11 +268,11 @@ export class Messages {
 
   /** Unblocks a player. Resolves to what went wrong in words, or null. */
   async unblock(who: string): Promise<string | null> {
-    if (!this.backend) return 'Sign in first';
+    if (!this.backend) return strings().common.signInFirst;
     try {
       await this.backend.unblock(who);
     } catch {
-      return TROUBLE;
+      return strings().common.tryAgain;
     }
     this.update({ blocked: this.snapshot.blocked.filter((b) => b.id !== who) });
     void this.refresh();
@@ -281,13 +281,13 @@ export class Messages {
 
   /** Reports a player. Resolves to what went wrong in words, or null. */
   async report(who: string, why: ReportReason | null, note: string): Promise<string | null> {
-    if (!this.backend) return 'Sign in first';
-    if (!why) return 'Choose a reason';
+    if (!this.backend) return strings().common.signInFirst;
+    if (!why) return strings().messages.chooseReason;
     if (note.trim().length > MAX_NOTE) return reportProblem('invalid');
     try {
       return reportProblem(await this.backend.report(who, why, note.trim()));
     } catch {
-      return TROUBLE;
+      return strings().common.tryAgain;
     }
   }
 

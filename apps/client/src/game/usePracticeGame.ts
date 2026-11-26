@@ -4,6 +4,7 @@ import type { Game, TileId } from '@gur/engine';
 import { YOU, closingTiles, initialState, practiceReducer } from './practiceReducer';
 import type { Place } from './practiceReducer';
 import type { Side } from './rackLayout';
+import { useT } from '@/i18n';
 
 export { YOU };
 export const PLAYER_NAMES = ['You', 'Bot 1', 'Bot 2', 'Bot 3'];
@@ -33,6 +34,7 @@ export function usePracticeGame({
   timer = true,
   newGame = defaultNewGame,
 }: PracticeOptions) {
+  const t = useT();
   const [state, dispatch] = useReducer(practiceReducer, undefined, () => initialState(newGame(aceHigh)));
   const [tick, setTick] = useState<{ turn: string; left: number } | null>(null);
   const { game, layout, selected, message, log } = state;
@@ -99,11 +101,13 @@ export function usePracticeGame({
 
   // The table is drawn from your view of the game, the same shape the server sends when playing online.
   const view = useMemo(() => playerView(game, YOU), [game]);
+  // Your own seat is called "You" in the language the app shows; the bots keep their names.
+  const names = useMemo(() => [t.common.you, ...PLAYER_NAMES.slice(1)], [t]);
 
   return {
     game,
     view,
-    names: PLAYER_NAMES,
+    names,
     hand,
     layout,
     selected,

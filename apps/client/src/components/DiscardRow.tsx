@@ -13,6 +13,7 @@ import {
 } from '@/game/feltLayout';
 import type { RowBadge } from '@/game/feltLayout';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 type Props = {
   /** The player these tiles lie in front of: they were left for this player. */
@@ -56,19 +57,20 @@ export function DiscardRow({
   onDropAt,
   onDragChange,
 }: Props) {
+  const t = useT();
   const shown = discards.slice(-DISCARDS_SHOWN);
   return (
     <View
       style={[styles.wrap, { width: discardRowWidth(tileWidth, badge), height: discardRowHeight(tileWidth) }]}
       testID="discards"
-      accessibilityLabel={`Tiles left for ${you ? 'you' : name}`}
+      accessibilityLabel={t.table.discardsOf(you ? null : name)}
     >
       {badge !== 'none' && (
         <View
           style={[styles.badge, badge === 'compact' && styles.badgeCompact, { backgroundColor: avatarColor(seat) }]}
         >
           <Text style={[styles.badgeText, badge === 'compact' && styles.badgeTextCompact]} selectable={false}>
-            {you ? 'You' : initialOf(name)}
+            {you ? t.common.you : initialOf(name)}
           </Text>
         </View>
       )}

@@ -3,11 +3,12 @@
  * picked, and a line of words for what just happened. The game itself arrives from the
  * server as your view of it; this file never changes the game, it only follows it.
  */
-import { describeTile } from '@gur/engine';
 import type { PlayerView, TileId } from '@gur/engine';
 import { colsOf, initialLayout, placeTile, reconcile, resizeLayout } from '@/game/rackLayout';
 import type { Layout, Side } from '@/game/rackLayout';
 import type { Place } from '@/game/tableModel';
+import { strings, tileName } from '@/i18n';
+import type { Strings } from '@/i18n';
 
 export type OnlineTableState = {
   view: PlayerView;
@@ -48,30 +49,44 @@ export function initialOnlineTable(view: PlayerView, names: readonly string[], c
  * What just happened at the table, in words, from your view before and after. Null when
  * nothing worth saying changed (somebody only moved tiles on their own rack).
  */
-export function describeChange(before: PlayerView, after: PlayerView, names: readonly string[]): string | null {
-  const who = (seat: number) => (seat === after.seat ? 'You' : names[seat]!);
+export function describeChange(
+  before: PlayerView,
+  after: PlayerView,
+  names: readonly string[],
+  t: Strings = strings(),
+): string | null {
+  // Your own moves have their own words: Albanian says "Hodhe", not "Ti hodhi".
+  const you = (seat: number) => seat === after.seat;
+  const name = (seat: number) => names[seat]!;
   if (after.results.length > before.results.length) {
     const result = after.results.at(-1)!;
-    if (result.reason === 'stockOut') return 'The middle ran out';
-    const closer = who(result.winners[0]!);
-    return after.round.indicatorTakenBy === result.winners[0]
-      ? `${closer} took the indicator and closed`
-      : `${closer} closed`;
+    if (result.reason === 'stockOut') return t.moves.stockOut;
+    const closer = result.winners[0]!;
+    if (after.round.indicatorTakenBy === closer) {
+      return you(closer) ? t.moves.youClosedWithIndicator : t.moves.closedWithIndicator(name(closer));
+    }
+    return you(closer) ? t.moves.youClosed : t.moves.closed(name(closer));
   }
-  if (after.round.number !== before.round.number) return `Round ${after.round.number}`;
+  if (after.round.number !== before.round.number) return t.moves.round(after.round.number);
 
   const b = before.round;
   const a = after.round;
   // A discard: the turn passed on.
-  if (a.turn > b.turn && a.lastDiscard) return `${who(a.lastDiscard.by)} discarded ${describeTile(a.lastDiscard.tile)}`;
+  if (a.turn > b.turn && a.lastDiscard) {
+    const tile = tileName(a.lastDiscard.tile, t);
+    return you(a.lastDiscard.by) ? t.moves.youDiscarded(tile) : t.moves.discarded(name(a.lastDiscard.by), tile);
+  }
   // A draw: still the same turn, now with a tile to discard.
   if (a.turn === b.turn && b.phase === 'draw' && a.phase === 'discard') {
-    if (a.indicatorTakenBy !== null && b.indicatorTakenBy === null) return `${who(a.current)} took the indicator`;
-    if (a.middleCount < b.middleCount) return `${who(a.current)} drew from the middle`;
-    return `${who(a.current)} picked up the last discarded tile`;
+    const mine = you(a.current);
+    if (a.indicatorTakenBy !== null && b.indicatorTakenBy === null) {
+      return mine ? t.moves.youTookIndicator : t.moves.tookIndicator(name(a.current));
+    }
+    if (a.middleCount < b.middleCount) return mine ? t.moves.youDrew : t.moves.drew(name(a.current));
+    return mine ? t.moves.youTookDiscard : t.moves.tookDiscard(name(a.current));
   }
   // Everything is new although the round is the same: somebody asked for a restart.
-  if (a.turn === 0 && a.indicator !== b.indicator) return 'New deal: a player with three pairs asked for a restart';
+  if (a.turn === 0 && a.indicator !== b.indicator) return t.moves.restart;
   return null;
 }
 
