@@ -1,3 +1,5 @@
+import { strings } from '@/i18n';
+
 /**
  * Your friends: the players you are friends with, the requests waiting for your answer, and
  * the ones you sent. One list for the whole app, kept outside the screens. Only for a
@@ -33,29 +35,29 @@ export interface FriendsBackend {
 
 /** What to tell the player after they asked somebody to be friends. */
 export function addMessage(status: AddStatus, username: string | null): string {
-  const name = username ?? 'That player';
+  const t = strings().friends;
+  const name = username ?? t.thatPlayer;
   switch (status) {
     case 'sent':
-      return `Request sent to ${name}`;
+      return t.sent(name);
     case 'friends':
-      return `You and ${name} are friends now`;
+      return t.nowFriends(name);
     case 'already':
-      return `You and ${name} are friends already`;
+      return t.already(name);
     case 'waiting':
-      return `You already asked ${name}. Waiting for their answer`;
+      return t.asked(name);
     case 'not_found':
-      return 'Nobody has that name or ID';
+      return t.notFound;
     case 'yourself':
-      return 'That is you';
+      return t.yourself;
     case 'full':
-      return 'You have too many friends or open requests. Remove some first';
+      return t.tooMany;
     case 'blocked':
-      return `You blocked ${name}. Unblock them first (under "Blocked" below)`;
+      return t.youBlocked(name);
   }
 }
 
 const EMPTY: FriendsSnapshot = { status: 'idle', people: [] };
-const TROUBLE = 'That did not work. Please try again';
 
 export class Friends {
   private snapshot: FriendsSnapshot = EMPTY;
@@ -97,15 +99,15 @@ export class Friends {
   /** Asks a player, by username or ID, to be friends. `ok` says whether something came of it. */
   async add(raw: string): Promise<{ ok: boolean; message: string }> {
     const who = raw.trim();
-    if (!this.backend) return { ok: false, message: 'Sign in first' };
-    if (!who) return { ok: false, message: 'Type a username or an ID' };
+    if (!this.backend) return { ok: false, message: strings().common.signInFirst };
+    if (!who) return { ok: false, message: strings().friends.typeSomeone };
     try {
       const { status, username } = await this.backend.add(who);
       const ok = status === 'sent' || status === 'friends';
       if (ok) await this.refresh();
       return { ok, message: addMessage(status, username) };
     } catch {
-      return { ok: false, message: TROUBLE };
+      return { ok: false, message: strings().common.tryAgain };
     }
   }
 
@@ -120,11 +122,11 @@ export class Friends {
   }
 
   private async change(act: (backend: FriendsBackend) => Promise<void>): Promise<string | null> {
-    if (!this.backend) return 'Sign in first';
+    if (!this.backend) return strings().common.signInFirst;
     try {
       await act(this.backend);
     } catch {
-      return TROUBLE;
+      return strings().common.tryAgain;
     }
     await this.refresh();
     return null;

@@ -4,6 +4,7 @@ import { account } from '@/account';
 import type { Profile } from '@/account/account';
 import { Avatar } from './Avatar';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 /** Puts text on the clipboard. False where the browser does not allow it. */
 export async function copyText(text: string): Promise<boolean> {
@@ -28,6 +29,7 @@ type Props = {
  * by (with a copy button), and changing the name, signing out, and deleting the account.
  */
 export function ProfilePanel({ profile, onDeleted }: Props) {
+  const t = useT();
   const [mode, setMode] = useState<'view' | 'rename' | 'delete'>('view');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -64,22 +66,22 @@ export function ProfilePanel({ profile, onDeleted }: Props) {
             </Text>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Copy your ID"
+              accessibilityLabel={t.profile.copyId}
               onPress={() => void copyText(profile.publicId).then(setCopied)}
               style={({ pressed }) => [styles.copy, pressed && styles.pressed]}
             >
-              <Text style={styles.copyText}>{copied ? 'Copied' : 'Copy'}</Text>
+              <Text style={styles.copyText}>{copied ? t.profile.copied : t.profile.copy}</Text>
             </Pressable>
           </View>
-          {copied === false && <Text style={styles.hint}>Select the number to copy it.</Text>}
+          {copied === false && <Text style={styles.hint}>{t.profile.selectToCopy}</Text>}
         </View>
       </View>
-      <Text style={styles.hint}>Friends can add you by your name or by this ID.</Text>
+      <Text style={styles.hint}>{t.profile.idHint}</Text>
 
       {mode === 'rename' && (
         <>
           <TextInput
-            accessibilityLabel="New name"
+            accessibilityLabel={t.profile.newName}
             value={name}
             onChangeText={setName}
             maxLength={16}
@@ -95,7 +97,7 @@ export function ProfilePanel({ profile, onDeleted }: Props) {
               onPress={() => void save()}
               style={[styles.button, styles.buttonOn, busy && styles.dim]}
             >
-              <Text style={styles.buttonDarkText}>Save</Text>
+              <Text style={styles.buttonDarkText}>{t.common.save}</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
@@ -105,7 +107,7 @@ export function ProfilePanel({ profile, onDeleted }: Props) {
               }}
               style={styles.button}
             >
-              <Text style={styles.buttonText}>Cancel</Text>
+              <Text style={styles.buttonText}>{t.common.cancel}</Text>
             </Pressable>
           </View>
         </>
@@ -114,8 +116,7 @@ export function ProfilePanel({ profile, onDeleted }: Props) {
       {mode === 'delete' && (
         <>
           <Text style={styles.warning} testID="delete-warning">
-            Delete your account? Your name, your ID, your picture and your friends are removed for good. This cannot be
-            undone.
+            {t.profile.deleteAsk}
           </Text>
           <View style={styles.row}>
             <Pressable
@@ -124,10 +125,10 @@ export function ProfilePanel({ profile, onDeleted }: Props) {
               disabled={busy}
               style={[styles.button, styles.buttonDanger, busy && styles.dim]}
             >
-              <Text style={styles.buttonDarkText}>Delete for good</Text>
+              <Text style={styles.buttonDarkText}>{t.profile.deleteForGood}</Text>
             </Pressable>
             <Pressable accessibilityRole="button" onPress={() => setMode('view')} style={styles.button}>
-              <Text style={styles.buttonText}>Keep my account</Text>
+              <Text style={styles.buttonText}>{t.profile.keep}</Text>
             </Pressable>
           </View>
         </>
@@ -144,25 +145,25 @@ export function ProfilePanel({ profile, onDeleted }: Props) {
             }}
             style={({ pressed }) => [styles.item, pressed && styles.pressed]}
           >
-            <Text style={styles.itemText}>Change name</Text>
+            <Text style={styles.itemText}>{t.profile.changeName}</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
             onPress={() => void account.signOut()}
             style={({ pressed }) => [styles.item, pressed && styles.pressed]}
           >
-            <Text style={styles.itemText}>Sign out</Text>
+            <Text style={styles.itemText}>{t.profile.signOut}</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Delete account"
+            accessibilityLabel={t.profile.delete}
             onPress={() => {
               setError(null);
               setMode('delete');
             }}
             style={({ pressed }) => [styles.item, styles.itemLast, pressed && styles.pressed]}
           >
-            <Text style={[styles.itemText, styles.itemDanger]}>Delete account</Text>
+            <Text style={[styles.itemText, styles.itemDanger]}>{t.profile.delete}</Text>
           </Pressable>
         </View>
       )}

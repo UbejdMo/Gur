@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensio
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CloseIcon } from './icons';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 type Props = {
   title: string;
@@ -20,6 +21,7 @@ type Props = {
  * back button (Escape in a browser) closes it.
  */
 export function Popover({ title, open, onClose, children, place = 'topRight', testID }: Props) {
+  const t = useT();
   const screen = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const width = Math.min(400, screen.width - 24);
@@ -30,7 +32,12 @@ export function Popover({ title, open, onClose, children, place = 'topRight', te
       : Math.max(insets.top + 24, screen.height * 0.12);
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" testID="popover-backdrop" />
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityLabel={t.common.close}
+        testID="popover-backdrop"
+      />
       <View
         style={[
           styles.panel,
@@ -49,7 +56,7 @@ export function Popover({ title, open, onClose, children, place = 'topRight', te
           </Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Close ${title.toLowerCase()}`}
+            accessibilityLabel={t.common.closeNamed(title)}
             onPress={onClose}
             hitSlop={10}
             style={({ pressed }) => [styles.close, pressed && styles.pressed]}

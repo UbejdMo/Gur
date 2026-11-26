@@ -5,6 +5,8 @@
  * Signing in is optional. Without an account you play as a guest under a name you type.
  */
 
+import { strings } from '@/i18n';
+
 export type Profile = {
   id: string;
   /** Eight digits a friend can add you by. */
@@ -40,9 +42,10 @@ export interface AuthBackend {
 
 /** The same rule as the database: 3 to 16 letters, digits or underscores. */
 export function usernameProblem(name: string): string | null {
-  if (name.length < 3) return 'A name needs at least 3 characters';
-  if (name.length > 16) return 'A name can have 16 characters at most';
-  if (/[^\p{L}\p{N}_]/u.test(name)) return 'Use only letters, digits and _ (no spaces)';
+  const t = strings();
+  if (name.length < 3) return t.profile.nameShort;
+  if (name.length > 16) return t.profile.nameLong;
+  if (/[^\p{L}\p{N}_]/u.test(name)) return t.profile.nameChars;
   return null;
 }
 
@@ -74,11 +77,11 @@ export class Account {
 
   /** Goes to Google to sign in. Resolves to an error in words, or null when the browser is on its way. */
   async signIn(returnTo: string): Promise<string | null> {
-    if (!this.backend) return 'Signing in is not set up yet';
+    if (!this.backend) return strings().profile.signInNotSetUp;
     try {
       return await this.backend.signInWithGoogle(returnTo);
     } catch {
-      return 'Signing in did not work. Please try again';
+      return strings().profile.signInFailed;
     }
   }
 
@@ -91,7 +94,7 @@ export class Account {
   async rename(raw: string): Promise<string | null> {
     const name = raw.trim();
     const { profile } = this.snapshot;
-    if (!this.backend || !profile) return 'Sign in first';
+    if (!this.backend || !profile) return strings().common.signInFirst;
     const problem = usernameProblem(name);
     if (problem) return problem;
     if (name === profile.username) return null;
@@ -105,9 +108,9 @@ export class Account {
       this.update({ profile: result.profile });
       return null;
     }
-    if (result.reason === 'taken') return 'Somebody already has that name';
-    if (result.reason === 'invalid') return 'Use only letters, digits and _ (no spaces)';
-    return 'The name could not be saved. Please try again';
+    if (result.reason === 'taken') return strings().profile.nameTaken;
+    if (result.reason === 'invalid') return strings().profile.nameChars;
+    return strings().profile.nameNotSaved;
   }
 
   /**
@@ -115,14 +118,14 @@ export class Account {
    * Resolves to what went wrong in words, or null when it is gone.
    */
   async deleteAccount(): Promise<string | null> {
-    if (!this.backend || !this.snapshot.profile) return 'Sign in first';
+    if (!this.backend || !this.snapshot.profile) return strings().common.signInFirst;
     let gone: boolean;
     try {
       gone = await this.backend.deleteAccount();
     } catch {
       gone = false;
     }
-    if (!gone) return 'Your account could not be deleted. Please try again';
+    if (!gone) return strings().profile.notDeleted;
     this.update({ status: 'signedOut', profile: null });
     return null;
   }

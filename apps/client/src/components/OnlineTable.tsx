@@ -8,6 +8,7 @@ import type { Connection, OnlineStatus, TableLine } from '@/online/connection';
 import { useTableChat } from '@/online/tableChat';
 import { useCountdown, useOnlineTable } from '@/online/useOnlineTable';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 type Props = {
   lobby: LobbyState & { game: PlayerView };
@@ -24,10 +25,11 @@ type Props = {
 
 /** A game with friends: the same table as against the bots, run by the server. */
 export function OnlineTable({ lobby, connection, clockOffset, status, onLeave, chat = [], onPlayAgain }: Props) {
+  const t = useT();
   const table = useOnlineTable(lobby, connection, clockOffset);
   const { view } = table;
   const host = lobby.members[lobby.you]!.host;
-  const hostName = lobby.members.find((m) => m.host)?.name ?? 'the host';
+  const hostName = lobby.members.find((m) => m.host)?.name ?? null;
   const { speech } = useTableChat(lobby, chat);
   const nextIn = useCountdown(view.status === 'roundOver' ? lobby.nextRoundAt : null, clockOffset);
 
@@ -38,20 +40,20 @@ export function OnlineTable({ lobby, connection, clockOffset, status, onLeave, c
     ? null
     : view.status === 'roundOver'
       ? nextIn === null
-        ? 'The next round starts soon'
-        : `The next round starts in ${nextIn} second${nextIn === 1 ? '' : 's'}`
+        ? t.results.nextSoon
+        : t.results.nextIn(nextIn)
       : host
         ? null
-        : `Waiting for ${hostName} to go back to the lobby`;
+        : t.results.waitingHost(hostName);
   const primary = open
     ? onPlayAgain
-      ? { label: 'Play again', onPress: onPlayAgain }
+      ? { label: t.results.playAgain, onPress: onPlayAgain }
       : null
     : !host
       ? null
       : view.status === 'roundOver'
-        ? { label: 'Next round now', onPress: () => void connection.next() }
-        : { label: 'Back to the lobby', onPress: () => void connection.next() };
+        ? { label: t.results.nextNow, onPress: () => void connection.next() }
+        : { label: t.results.backToLobby, onPress: () => void connection.next() };
 
   return (
     <View style={styles.fill}>
@@ -67,7 +69,7 @@ export function OnlineTable({ lobby, connection, clockOffset, status, onLeave, c
             onReport={(chatId, why, note, alsoBlock) => connection.report(chatId, why, note, alsoBlock)}
           />
         }
-        leaveNote="The game goes on without you: your turns are played for you. You cannot come back to this game."
+        leaveNote={t.table.leaveNote}
         overlay={
           over && (
             <ResultsOverlay
@@ -75,7 +77,7 @@ export function OnlineTable({ lobby, connection, clockOffset, status, onLeave, c
               names={table.names}
               primary={primary}
               note={note}
-              menuLabel="Leave"
+              menuLabel={t.common.leave}
               onMenu={onLeave}
             />
           )
@@ -83,7 +85,7 @@ export function OnlineTable({ lobby, connection, clockOffset, status, onLeave, c
       />
       {status !== 'online' && (
         <View style={styles.banner} testID="connection-lost" accessibilityLiveRegion="polite">
-          <Text style={styles.bannerText}>Connection lost. Getting you back to the table…</Text>
+          <Text style={styles.bannerText}>{t.table.connectionLost}</Text>
         </View>
       )}
     </View>

@@ -8,6 +8,7 @@ import { Avatar } from './Avatar';
 import { PersonRow, Small } from './FriendsPanel';
 import { ChatIcon } from './icons';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 /** Who a conversation is with. */
 export type Other = { id: string; username: string; avatarUrl: string | null; publicId: string };
@@ -51,6 +52,7 @@ export function MessagesPanel({ start = null }: Props) {
 }
 
 function Conversations({ notice, onOpen }: { notice: string | null; onOpen: (other: Other) => void }) {
+  const t = useT();
   const { status, chats } = useMessages();
   const { people } = useFriends();
   useEffect(() => {
@@ -70,11 +72,7 @@ function Conversations({ notice, onOpen }: { notice: string | null; onOpen: (oth
         <View style={styles.emptyBox}>
           <ChatIcon size={36} color={colors.textMuted} />
           <Text style={styles.emptyText}>
-            {status === 'failed'
-              ? 'Your messages could not be fetched. Check your connection.'
-              : status === 'ready'
-                ? 'No messages yet. Add friends with the friends button, then write to them here.'
-                : 'One moment…'}
+            {status === 'failed' ? t.messages.couldNotFetch : status === 'ready' ? t.messages.none : t.common.oneMoment}
           </Text>
         </View>
       )}
@@ -83,11 +81,11 @@ function Conversations({ notice, onOpen }: { notice: string | null; onOpen: (oth
       ))}
       {quiet.length > 0 && (
         <View style={styles.card} testID="write-to">
-          <Text style={styles.label}>Write to a friend</Text>
+          <Text style={styles.label}>{t.messages.writeTo}</Text>
           {quiet.map((p) => (
             <PersonRow key={p.id} person={p}>
-              <Small label={`Write to ${p.username}`} on onPress={() => onOpen(p)}>
-                Write
+              <Small label={t.messages.writeToNamed(p.username)} on onPress={() => onOpen(p)}>
+                {t.messages.write}
               </Small>
             </PersonRow>
           ))}
@@ -98,10 +96,11 @@ function Conversations({ notice, onOpen }: { notice: string | null; onOpen: (oth
 }
 
 function ChatRow({ chat, onPress }: { chat: Chat; onPress: () => void }) {
+  const t = useT();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Conversation with ${chat.username}${chat.unread ? `, ${chat.unread} unread` : ''}`}
+      accessibilityLabel={t.messages.conversation(chat.username, chat.unread)}
       onPress={onPress}
       style={({ pressed }) => [styles.chat, pressed && styles.pressed]}
       testID={`chat-${chat.username}`}
@@ -116,7 +115,7 @@ function ChatRow({ chat, onPress }: { chat: Chat; onPress: () => void }) {
         </View>
         <View style={styles.chatTop}>
           <Text style={[styles.preview, chat.unread > 0 && styles.previewUnread]} numberOfLines={1}>
-            {chat.lastFromMe ? `You: ${chat.lastBody}` : chat.lastBody}
+            {chat.lastFromMe ? t.messages.youSaid(chat.lastBody) : chat.lastBody}
           </Text>
           {chat.unread > 0 && (
             <View style={styles.unread}>
@@ -132,6 +131,7 @@ function ChatRow({ chat, onPress }: { chat: Chat; onPress: () => void }) {
 type Mode = 'chat' | 'block' | 'report' | 'reported';
 
 function Conversation({ other, onBack }: { other: Other; onBack: (notice?: string) => void }) {
+  const t = useT();
   const screen = useWindowDimensions();
   const { threads } = useMessages();
   const { status: friendsStatus, people } = useFriends();
@@ -182,7 +182,7 @@ function Conversation({ other, onBack }: { other: Other; onBack: (notice?: strin
       return;
     }
     void friends.refresh();
-    onBack(`You blocked ${other.username}. You can unblock them in Friends.`);
+    onBack(t.messages.youBlocked(other.username));
   };
 
   const lines = thread?.lines ?? [];
@@ -193,7 +193,7 @@ function Conversation({ other, onBack }: { other: Other; onBack: (notice?: strin
       <View style={styles.head}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="All messages"
+          accessibilityLabel={t.messages.all}
           onPress={() => onBack()}
           hitSlop={8}
           style={({ pressed }) => [styles.back, pressed && styles.pressed]}
@@ -206,11 +206,11 @@ function Conversation({ other, onBack }: { other: Other; onBack: (notice?: strin
         </Text>
         {mode === 'chat' && (
           <>
-            <Small label={`Report ${other.username}`} quiet onPress={() => setMode('report')}>
-              Report
+            <Small label={t.messages.report(other.username)} quiet onPress={() => setMode('report')}>
+              {t.messages.shortReport}
             </Small>
-            <Small label={`Block ${other.username}`} quiet onPress={() => setMode('block')}>
-              Block
+            <Small label={t.messages.block(other.username)} quiet onPress={() => setMode('block')}>
+              {t.messages.shortBlock}
             </Small>
           </>
         )}
@@ -218,16 +218,13 @@ function Conversation({ other, onBack }: { other: Other; onBack: (notice?: strin
 
       {mode === 'block' && (
         <View style={styles.card} testID="block-confirm">
-          <Text style={styles.confirmText}>
-            Block {other.username}? You stop being friends, and neither of you can send the other a message or a friend
-            request. They are not told. You can unblock them later in Friends.
-          </Text>
+          <Text style={styles.confirmText}>{t.messages.blockAsk(other.username)}</Text>
           <View style={styles.row}>
-            <Small label={`Yes, block ${other.username}`} danger onPress={() => void block()}>
-              Block
+            <Small label={t.messages.yesBlock(other.username)} danger onPress={() => void block()}>
+              {t.messages.shortBlock}
             </Small>
-            <Small label="Cancel" onPress={() => setMode('chat')}>
-              Cancel
+            <Small label={t.common.cancel} onPress={() => setMode('chat')}>
+              {t.common.cancel}
             </Small>
           </View>
         </View>
@@ -247,15 +244,15 @@ function Conversation({ other, onBack }: { other: Other; onBack: (notice?: strin
       {mode === 'reported' && reported && (
         <View style={styles.card} testID="report-sent">
           <Text style={styles.confirmText}>
-            Thank you. Your report was sent, and it will be looked at.
-            {reported.blocked ? ` ${other.username} is blocked.` : ''}
+            {t.messages.reportSent}
+            {reported.blocked ? t.messages.isBlocked(other.username) : ''}
           </Text>
           <Small
-            label={reported.blocked ? 'Back to all messages' : 'Back to the conversation'}
+            label={reported.blocked ? t.messages.backToAll : t.messages.backToConversation}
             on
             onPress={() => (reported.blocked ? onBack() : setMode('chat'))}
           >
-            {reported.blocked ? 'Back to all messages' : 'Back to the conversation'}
+            {reported.blocked ? t.messages.backToAll : t.messages.backToConversation}
           </Small>
         </View>
       )}
@@ -287,15 +284,13 @@ function Conversation({ other, onBack }: { other: Other; onBack: (notice?: strin
                 onPress={() => void messages.loadEarlier(other.id)}
                 style={styles.earlier}
               >
-                <Text style={styles.earlierText}>Show earlier messages</Text>
+                <Text style={styles.earlierText}>{t.messages.earlier}</Text>
               </Pressable>
             )}
-            {thread?.status === 'loading' && <Text style={styles.emptyText}>One moment…</Text>}
-            {thread?.status === 'failed' && (
-              <Text style={styles.emptyText}>The messages could not be fetched. Check your connection.</Text>
-            )}
+            {thread?.status === 'loading' && <Text style={styles.emptyText}>{t.common.oneMoment}</Text>}
+            {thread?.status === 'failed' && <Text style={styles.emptyText}>{t.messages.couldNotFetchThese}</Text>}
             {thread?.status === 'ready' && lines.length === 0 && (
-              <Text style={styles.emptyText}>No messages yet. Say hello!</Text>
+              <Text style={styles.emptyText}>{t.messages.sayHello}</Text>
             )}
             {lines.map((line) => (
               <Bubble key={line.id} line={line} seen={line === lastMine && line.readAt !== null} />
@@ -305,11 +300,11 @@ function Conversation({ other, onBack }: { other: Other; onBack: (notice?: strin
           {canWrite ? (
             <View style={styles.composer}>
               <TextInput
-                accessibilityLabel={`Message to ${other.username}`}
+                accessibilityLabel={t.messages.messageTo(other.username)}
                 value={text}
                 onChangeText={setText}
                 maxLength={MAX_MESSAGE}
-                placeholder="Message"
+                placeholder={t.messages.placeholder}
                 placeholderTextColor={colors.textMuted}
                 style={styles.input}
                 onSubmitEditing={() => void send()}
@@ -318,17 +313,17 @@ function Conversation({ other, onBack }: { other: Other; onBack: (notice?: strin
               />
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Send"
+                accessibilityLabel={t.common.send}
                 onPress={() => void send()}
                 disabled={busy}
                 style={({ pressed }) => [styles.send, busy && styles.dim, pressed && styles.pressed]}
               >
-                <Text style={styles.sendText}>Send</Text>
+                <Text style={styles.sendText}>{t.common.send}</Text>
               </Pressable>
             </View>
           ) : (
             <Text style={styles.hint} testID="not-friends">
-              You are not friends with {other.username}, so you cannot write to them.
+              {t.messages.notFriends(other.username)}
             </Text>
           )}
           {text.length > MAX_MESSAGE - 50 && (
@@ -348,6 +343,7 @@ function Conversation({ other, onBack }: { other: Other; onBack: (notice?: strin
 }
 
 function Bubble({ line, seen }: { line: Line; seen: boolean }) {
+  const t = useT();
   return (
     <View
       style={[styles.bubbleWrap, line.fromMe ? styles.mine : styles.theirs]}
@@ -360,7 +356,7 @@ function Bubble({ line, seen }: { line: Line; seen: boolean }) {
       </View>
       <Text style={styles.bubbleTime}>
         {when(line.at)}
-        {seen ? ' · Seen' : ''}
+        {seen ? t.messages.seen : ''}
       </Text>
     </View>
   );
@@ -375,6 +371,7 @@ function ReportForm({
   onCancel: () => void;
   onSent: (blocked: boolean) => void;
 }) {
+  const t = useT();
   const [why, setWhy] = useState<ReportReason | null>(null);
   const [note, setNote] = useState('');
   const [alsoBlock, setAlsoBlock] = useState(true);
@@ -395,12 +392,10 @@ function ReportForm({
 
   return (
     <View style={styles.card} testID="report-form">
-      <Text style={styles.confirmText}>
-        Report {other.username}. The game&apos;s owner sees your report with your last messages together, and nobody
-        else. {other.username} is not told who reported them.
-      </Text>
-      <View accessibilityRole="radiogroup" accessibilityLabel="Reason" style={styles.reasons}>
-        {REPORT_REASONS.map(({ reason, label }) => {
+      <Text style={styles.confirmText}>{t.messages.reportAbout(other.username)}</Text>
+      <View accessibilityRole="radiogroup" accessibilityLabel={t.messages.reason} style={styles.reasons}>
+        {REPORT_REASONS.map(({ reason }) => {
+          const label = t.messages.reasons[reason] ?? reason;
           const on = why === reason;
           return (
             <Pressable
@@ -419,19 +414,19 @@ function ReportForm({
         })}
       </View>
       <TextInput
-        accessibilityLabel="What happened (optional)"
+        accessibilityLabel={t.messages.whatHappened}
         value={note}
         onChangeText={setNote}
         maxLength={MAX_NOTE}
         multiline
-        placeholder="What happened? (optional)"
+        placeholder={t.messages.whatHappenedPlaceholder}
         placeholderTextColor={colors.textMuted}
         style={[styles.input, styles.note]}
       />
       <View style={styles.option}>
-        <Text style={styles.optionText}>Also block {other.username}</Text>
+        <Text style={styles.optionText}>{t.messages.alsoBlock(other.username)}</Text>
         <Switch
-          accessibilityLabel={`Also block ${other.username}`}
+          accessibilityLabel={t.messages.alsoBlock(other.username)}
           value={alsoBlock}
           onValueChange={setAlsoBlock}
           trackColor={{ true: colors.accent, false: colors.tableDark }}
@@ -444,10 +439,10 @@ function ReportForm({
           disabled={busy}
           style={({ pressed }) => [styles.send, busy && styles.dim, pressed && styles.pressed]}
         >
-          <Text style={styles.sendText}>Send report</Text>
+          <Text style={styles.sendText}>{t.messages.sendReport}</Text>
         </Pressable>
-        <Small label="Cancel" onPress={onCancel}>
-          Cancel
+        <Small label={t.common.cancel} onPress={onCancel}>
+          {t.common.cancel}
         </Small>
       </View>
       {error && (

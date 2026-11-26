@@ -15,6 +15,7 @@ import { inPhoneBrowser, useFullscreen } from '@/hooks/useFullscreen';
 import { online } from '@/online/connection';
 import { loadOnlineAceHigh, saveOnlineAceHigh } from '@/online/onlineSettings';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 // Bots play a run with the joker in it; friends sit together like a set of one number.
 const BOT_TILES = [tileId('blue', 9), 104, tileId('blue', 11)] as const;
@@ -27,6 +28,7 @@ const ONLINE_TILES = [tileId('yellow', 1), tileId('blue', 1), tileId('red', 13)]
  * friends, and online with other players. Your profile, friends and messages are at the top right.
  */
 export default function Home() {
+  const t = useT();
   const insets = useSafeAreaInsets();
   const screen = useWindowDimensions();
   const fullscreen = useFullscreen();
@@ -68,29 +70,29 @@ export default function Home() {
         <Text style={[styles.title, short && styles.titleShort]} accessibilityRole="header">
           Gur
         </Text>
-        <Text style={styles.subtitle}>Tile rummy, the Kosovo way</Text>
+        <Text style={styles.subtitle}>{t.home.tagline}</Text>
       </View>
 
       <View style={[styles.cards, perRow === 1 && styles.cardsStacked, perRow === 2 && styles.cardsTwo]}>
         <PlayCard
-          title="Play against bots"
-          subtitle="Three bots, on this device"
+          title={t.home.bots}
+          subtitle={t.home.botsHint}
           tiles={BOT_TILES}
           tilt={-4}
           width={cardWidth}
           onPress={() => setBotsOpen(true)}
         />
         <PlayCard
-          title="Play with friends"
-          subtitle="Create a lobby or join one"
+          title={t.home.friends}
+          subtitle={t.home.friendsHint}
           tiles={FRIEND_TILES}
           tilt={4}
           width={cardWidth}
           onPress={() => router.push('/friends')}
         />
         <PlayCard
-          title="Play online"
-          subtitle="Meet other players"
+          title={t.home.online}
+          subtitle={t.home.onlineHint}
           tiles={ONLINE_TILES}
           tilt={-3}
           width={cardWidth}
@@ -100,25 +102,20 @@ export default function Home() {
 
       {cramped && !fullscreen.active && (
         <Text style={styles.note} testID="install-tip">
-          {fullscreen.supported
-            ? 'For the biggest table, play full screen (the button at the top left). Or add Gur to your home screen from the browser menu: it then opens like an app, without the address bar.'
-            : 'For a bigger table, add Gur to your home screen: tap Share, then "Add to Home Screen". It then opens like an app, without the address bar.'}
+          {fullscreen.supported ? t.home.tipFullscreen : t.home.tipInstall}
         </Text>
       )}
 
       <View style={styles.footer}>
-        <Text style={styles.about}>
-          A free tile rummy game for 2 to 4 players. Play against bots, with friends by lobby code, or online with other
-          players.
-        </Text>
+        <Text style={styles.about}>{t.home.about}</Text>
         <View style={styles.links}>
-          <PageLink page="privacy.html">Privacy policy</PageLink>
+          <PageLink page="privacy.html">{t.home.privacy}</PageLink>
           <Text style={styles.about}>·</Text>
-          <PageLink page="terms.html">Terms of service</PageLink>
+          <PageLink page="terms.html">{t.home.terms}</PageLink>
         </View>
       </View>
 
-      <Popover title="Play against bots" place="centre" open={botsOpen} onClose={() => setBotsOpen(false)}>
+      <Popover title={t.home.bots} place="centre" open={botsOpen} onClose={() => setBotsOpen(false)}>
         <BotsSetup
           initial={botSettings}
           onStart={(settings) => {
@@ -129,7 +126,7 @@ export default function Home() {
         />
       </Popover>
 
-      <Popover title="Play online" place="centre" open={onlineOpen} onClose={() => setOnlineOpen(false)}>
+      <Popover title={t.home.online} place="centre" open={onlineOpen} onClose={() => setOnlineOpen(false)}>
         <OnlineSetup
           username={profile?.username ?? null}
           initialName={online.savedName()}

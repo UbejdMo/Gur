@@ -5,12 +5,14 @@ import { account, friends, useAccount, useFriends, useMessages } from '@/account
 import { Avatar } from './Avatar';
 import { FriendsPanel } from './FriendsPanel';
 import { FullscreenButton } from './FullscreenButton';
+import { LanguageSwitch } from './LanguageSwitch';
 import { ChatIcon, FriendsIcon } from './icons';
 import { MessagesPanel } from './MessagesPanel';
 import type { Other } from './MessagesPanel';
 import { Popover } from './Popover';
 import { ProfilePanel } from './ProfilePanel';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 /** Where the player comes back to after signing in with Google: this page, without its query. */
 function returnAddress(): string {
@@ -27,6 +29,7 @@ type Open = 'profile' | 'friends' | 'messages' | null;
  * Without accounts in this build, the right side stays empty.
  */
 export function TopBar() {
+  const t = useT();
   const { available, status, profile } = useAccount();
   const asking = useFriends().people.filter((p) => p.state === 'incoming').length;
   const { unread } = useMessages();
@@ -58,13 +61,16 @@ export function TopBar() {
   return (
     <View style={styles.wrap}>
       <View style={styles.bar}>
-        <FullscreenButton compact />
+        <View style={styles.left}>
+          <FullscreenButton compact />
+          <LanguageSwitch />
+        </View>
         <View style={styles.right}>
           {settled && profile && (
             <>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={unread ? `Messages, ${unread} unread` : 'Messages'}
+                accessibilityLabel={unread ? t.topBar.messagesUnread(unread) : t.topBar.messages}
                 onPress={() => {
                   setChatWith(null);
                   setOpen('messages');
@@ -80,7 +86,7 @@ export function TopBar() {
               </Pressable>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={asking ? `Friends, ${asking} ${asking === 1 ? 'request' : 'requests'}` : 'Friends'}
+                accessibilityLabel={asking ? t.topBar.friendsAsking(asking) : t.topBar.friends}
                 onPress={() => {
                   setOpen('friends');
                   // Look for news at once: a request or an answer may have come since the last check.
@@ -97,7 +103,7 @@ export function TopBar() {
               </Pressable>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Your profile"
+                accessibilityLabel={t.topBar.profileButton}
                 onPress={() => setOpen('profile')}
                 style={({ pressed }) => [styles.me, pressed && styles.pressed]}
               >
@@ -111,7 +117,7 @@ export function TopBar() {
               onPress={() => void signIn()}
               style={({ pressed }) => [styles.signIn, busy && styles.dim, pressed && styles.pressed]}
             >
-              <Text style={styles.signInText}>Sign in with Google</Text>
+              <Text style={styles.signInText}>{t.topBar.signIn}</Text>
             </Pressable>
           )}
         </View>
@@ -124,20 +130,30 @@ export function TopBar() {
 
       {profile && (
         <>
-          <Popover title="Profile" open={open === 'profile'} onClose={() => setOpen(null)} testID="profile-panel">
+          <Popover
+            title={t.topBar.profile}
+            open={open === 'profile'}
+            onClose={() => setOpen(null)}
+            testID="profile-panel"
+          >
             <ProfilePanel
               profile={profile}
               onDeleted={() => {
                 setOpen(null);
                 setNotice({
-                  text: 'Your account is deleted. You can keep playing as a guest.',
+                  text: t.topBar.deleted,
                   error: false,
                   id: 'account-deleted',
                 });
               }}
             />
           </Popover>
-          <Popover title="Friends" open={open === 'friends'} onClose={() => setOpen(null)} testID="friends-panel">
+          <Popover
+            title={t.topBar.friends}
+            open={open === 'friends'}
+            onClose={() => setOpen(null)}
+            testID="friends-panel"
+          >
             <FriendsPanel
               profile={profile}
               onMessage={(friend) => {
@@ -146,7 +162,7 @@ export function TopBar() {
               }}
             />
           </Popover>
-          <Popover title="Messages" open={open === 'messages'} onClose={() => setOpen(null)}>
+          <Popover title={t.topBar.messages} open={open === 'messages'} onClose={() => setOpen(null)}>
             <MessagesPanel start={chatWith} />
           </Popover>
         </>
@@ -158,6 +174,7 @@ export function TopBar() {
 const styles = StyleSheet.create({
   wrap: { width: '100%', gap: 6 },
   bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
+  left: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   right: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
   icon: {
     width: 44,

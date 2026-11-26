@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { AuthBackend, Profile } from './account';
 import type { AddStatus, FriendsBackend, Person } from './friends';
 import type { Blocked, Chat, Line, MessagesBackend, ReportStatus, SendStatus } from './messages';
+import { strings } from '@/i18n';
 
 type Row = { id: string; public_id: string; username: string; avatar_url: string | null };
 const COLUMNS = 'id, public_id, username, avatar_url';
@@ -44,7 +45,7 @@ export function supabaseBackend(
     },
     signInWithGoogle: async (returnTo) => {
       const { error } = await client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: returnTo } });
-      return error ? 'Signing in did not work. Please try again' : null;
+      return error ? strings().profile.signInFailed : null;
     },
     signOut: async () => {
       await client.auth.signOut();

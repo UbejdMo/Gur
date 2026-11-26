@@ -2,6 +2,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } fr
 import type { PlayerView } from '@gur/engine';
 import { Tile } from './Tile';
 import { colors } from '@/theme';
+import { strings, useT } from '@/i18n';
+import type { Strings } from '@/i18n';
 
 type Props = {
   /** Your view of the game once a round is over. */
@@ -17,39 +19,39 @@ type Props = {
   onMenu: () => void;
 };
 
-export function resultTitle(view: PlayerView, names: readonly string[]): string {
+export function resultTitle(view: PlayerView, names: readonly string[], t: Strings = strings()): string {
   const result = view.results.at(-1)!;
   const you = view.seat;
   if (result.reason === 'stockOut') {
-    if (result.winners.length > 1) return 'The middle ran out: shared win';
-    return result.winners[0] === you
-      ? 'The middle ran out: you win'
-      : `The middle ran out: ${names[result.winners[0]!]} wins`;
+    if (result.winners.length > 1) return t.results.sharedWin;
+    return result.winners[0] === you ? t.results.youWinStock : t.results.winsStock(names[result.winners[0]!]!);
   }
-  const who = result.winners[0] === you ? 'You closed' : `${names[result.winners[0]!]} closed`;
-  return result.double ? `${who} with the joker: double!` : `${who}!`;
+  const who = result.winners[0] === you ? t.results.youClosed : t.results.closed(names[result.winners[0]!]!);
+  return result.double ? t.results.double(who) : `${who}!`;
 }
 
 /** Who won the whole match, in words, once its last round is over. */
-export function matchTitle(view: PlayerView, names: readonly string[]): string | null {
+export function matchTitle(view: PlayerView, names: readonly string[], t: Strings = strings()): string | null {
   if (view.status !== 'matchOver' || view.settings.rounds === 1) return null;
-  if (view.matchWinners.length > 1)
-    return `The match is shared: ${view.matchWinners.map((s) => names[s]).join(' and ')}`;
-  return view.matchWinners[0] === view.seat ? 'You win the match!' : `${names[view.matchWinners[0]!]} wins the match`;
+  if (view.matchWinners.length > 1) return t.results.matchShared(view.matchWinners.map((s) => names[s]!));
+  return view.matchWinners[0] === view.seat
+    ? t.results.youWinMatch
+    : t.results.winsMatch(names[view.matchWinners[0]!]!);
 }
 
 /**
  * End of a round: who won, everyone's points (lowest wins), and the winning hand.
  * In a match of several rounds it also shows the running totals.
  */
-export function ResultsOverlay({ view, names, primary, note, menuLabel = 'Menu', onMenu }: Props) {
+export function ResultsOverlay({ view, names, primary, note, menuLabel, onMenu }: Props) {
+  const t = useT();
   const result = view.results.at(-1)!;
   const winner = result.winners[0]!;
   const match = view.settings.rounds > 1;
   const order = result.scores
     .map((s, i) => ({ seat: i, score: s, total: view.players[i]!.total }))
     .sort((a, b) => (match ? a.total - b.total : a.score - b.score));
-  const overall = matchTitle(view, names);
+  const overall = matchTitle(view, names, t);
   // A phone on its side has little height: points on the left, the winning hand on the right,
   // and the buttons always in view under both.
   const screen = useWindowDimensions();
@@ -65,27 +67,29 @@ export function ResultsOverlay({ view, names, primary, note, menuLabel = 'Menu',
         >
           <View style={[styles.column, low && styles.columnLow]}>
             <Text style={[styles.title, low && styles.titleLow]} accessibilityRole="header">
-              {resultTitle(view, names)}
+              {resultTitle(view, names, t)}
             </Text>
             {match && (
               <Text style={[styles.round, low && styles.roundLow]} testID="round-count">
-                {overall ?? `Round ${view.round.number} of ${view.settings.rounds}`}
+                {overall ?? t.results.roundOf(view.round.number, view.settings.rounds)}
               </Text>
             )}
 
             <View style={styles.table}>
               {match && (
                 <View style={styles.row}>
-                  <Text style={[styles.name, styles.head]}>Player</Text>
-                  <Text style={[styles.score, styles.head]}>Round</Text>
-                  <Text style={[styles.score, styles.head]}>Total</Text>
+                  <Text style={[styles.name, styles.head]}>{t.results.player}</Text>
+                  <Text style={[styles.score, styles.head]}>{t.results.round}</Text>
+                  <Text style={[styles.score, styles.head]}>{t.results.total}</Text>
                 </View>
               )}
               {order.map(({ seat, score, total }) => (
                 <View key={seat} style={styles.row}>
                   <Text style={[styles.name, result.winners.includes(seat) && styles.winner]} numberOfLines={1}>
                     {result.winners.includes(seat) ? '★ ' : ''}
-                    {seat === view.seat && names[seat] !== 'You' ? `${names[seat]} (you)` : names[seat]}
+                    {seat === view.seat && names[seat] !== t.common.you
+                      ? `${names[seat]}${t.common.youMark}`
+                      : names[seat]}
                   </Text>
                   <Text style={[styles.score, result.winners.includes(seat) && styles.winner]} testID={`score-${seat}`}>
                     {score}
@@ -98,12 +102,14 @@ export function ResultsOverlay({ view, names, primary, note, menuLabel = 'Menu',
                 </View>
               ))}
             </View>
-            <Text style={styles.hint}>Lowest points win.</Text>
+            <Text style={styles.hint}>{t.results.lowestWins}</Text>
           </View>
           <View style={[styles.column, low && styles.columnLow]}>
             {result.reason === 'close' && (
               <>
-                <Text style={[styles.label, low && styles.labelLow]}>{names[winner]}&apos;s hand</Text>
+                <Text style={[styles.label, low && styles.labelLow]}>
+                  {winner === view.seat ? t.results.yourHand : t.results.hand(names[winner]!)}
+                </Text>
                 <View style={styles.hand}>
                   {(view.players[winner]!.groups ?? []).map((g) => (
                     <View key={g.join('-')} style={styles.group}>
@@ -131,7 +137,7 @@ export function ResultsOverlay({ view, names, primary, note, menuLabel = 'Menu',
             </Pressable>
           )}
           <Pressable accessibilityRole="button" onPress={onMenu} style={styles.button}>
-            <Text style={styles.secondaryText}>{menuLabel}</Text>
+            <Text style={styles.secondaryText}>{menuLabel ?? t.results.menu}</Text>
           </Pressable>
         </View>
       </View>

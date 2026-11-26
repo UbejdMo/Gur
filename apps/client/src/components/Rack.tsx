@@ -10,6 +10,7 @@ import { Tile } from './Tile';
 import { MAX_COLS, MIN_COLS, ROWS, colsOf } from '@/game/rackLayout';
 import type { Layout, Side } from '@/game/rackLayout';
 import { colors } from '@/theme';
+import { useT } from '@/i18n';
 
 /** Padding at each end of the rack: room for the bolts. */
 export const RACK_PAD = 16;
@@ -70,6 +71,7 @@ export function Rack({
   onResize,
   ref,
 }: Props) {
+  const t = useT();
   // The rack, not each tile, handles dragging: it contains every tile, so it sees the pointer
   // wherever it moves. Pressing a tile marks it; moving the pointer then drags that tile.
   // Set synchronously at the very start of a press, so even a quick flick knows which tile it moved.
@@ -175,7 +177,7 @@ export function Rack({
                     <Pressable
                       key={`empty-${base}`}
                       accessibilityRole="button"
-                      accessibilityLabel={`Empty slot ${base + 1}`}
+                      accessibilityLabel={t.table.emptySlot(base + 1)}
                       testID="rack-slot-empty"
                       onPress={() => selected !== null && onMoveSelected(base)}
                       style={[

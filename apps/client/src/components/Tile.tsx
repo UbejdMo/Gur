@@ -1,7 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { describeTile, getTile } from '@gur/engine';
+import { getTile } from '@gur/engine';
 import type { TileId } from '@gur/engine';
 import { colors, tileInk } from '@/theme';
+import { tileName, useT } from '@/i18n';
 
 type Props = {
   id: TileId;
@@ -31,9 +32,10 @@ export function Tile({
   disabled,
   width,
 }: Props) {
+  const t = useT();
   const tile = getTile(id);
   const small = size === 'small';
-  const label = wild ? `${describeTile(id)}, joker` : describeTile(id);
+  const label = wild ? t.tiles.wild(tileName(id, t)) : tileName(id, t);
 
   const sized = width
     ? {
